@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DashKee — Your Keeta Dashboard</title>
+<link rel="stylesheet" href="/styles.css" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2324283b'/%3E%3Cpath d='M10 8v12.5L19 8h4l-7.5 9L23 24h-4.2l-6-6.6V24H10z' fill='%237aa2f7'/%3E%3C/svg%3E" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">K</div>
+    <div>
+      <div class="brand-name">Dash<span>Kee</span></div>
+      <div class="brand-sub">Personal Keeta dashboard</div>
+    </div>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button data-tab="overview" class="active">Overview</button>
+    <button data-tab="accounts">Accounts</button>
+    <button data-tab="assets">Assets</button>
+    <button data-tab="activity">Activity</button>
+    <button data-tab="network">Network</button>
+  </nav>
+  <div class="top-actions">
+    <span class="net-pill"><span class="pill-dot"></span>Mainnet</span>
+    <button id="connect-btn" class="primary-btn">Connect</button>
+  </div>
+</header>
+
+<main>
+  <!-- ============ CONNECT MODAL ============ -->
+  <div id="connect-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>Connect your accounts</h2>
+        <button id="connect-close" class="x-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted">Two ways to open your dashboard. Everything is <b>read-only</b> — balances and history only.</p>
+        <div class="connect-methods">
+          <div class="method-card">
+            <h3>🔒 Watch an address</h3>
+            <p class="muted small">Paste any Keeta address (or several, one per line). Nothing sensitive required.</p>
+            <textarea id="watch-input" rows="3" placeholder="keeta_aab…"></textarea>
+            <button id="watch-save" class="primary-btn full">Add addresses</button>
+          </div>
+          <div class="method-card">
+            <h3>🔑 Unlock with seed</h3>
+            <p class="muted small">Derives your subaccounts <b>inside your browser</b>. Your seed is never sent to the server or stored.</p>
+            <input id="seed-input" type="password" placeholder="64-char hex seed" autocomplete="off" />
+            <div class="seed-row">
+              <label>Scan indices</label>
+              <select id="seed-range"><option>10</option><option selected>20</option><option>40</option><option>100</option></select>
+            </div>
+            <button id="seed-derive" class="primary-btn full">Derive subaccounts</button>
+            <div id="seed-results" class="seed-results hidden">
+              <div class="seed-list" id="seed-list"></div>
+              <button id="seed-save" class="primary-btn full">Save selected</button>
+            </div>
+          </div>
+        </div>
+        <div class="security-note muted small">Your seed is processed locally with the official Keeta SDK (self-hosted). Only public <code>keeta_…</code> addresses are ever transmitted. Saved addresses live in your browser's localStorage.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ OVERVIEW ============ -->
+  <section id="tab-overview" class="tabpane">
+    <div id="empty-state" class="empty-state">
+      <div class="empty-icon">🏦</div>
+      <h1>Welcome to DashKee</h1>
+      <p class="muted">A banking-style dashboard for your Keeta Network accounts — assets, stablecoins, subaccounts and storage accounts, all live on mainnet.</p>
+      <button class="primary-btn big" id="empty-connect">Connect your accounts</button>
+    </div>
+
+    <div id="dashboard" class="hidden">
+      <div class="hero-row">
+        <div class="hero-card">
+          <div class="hero-top">
+            <div>
+              <div class="hero-label">Total balance</div>
+              <div class="hero-value" id="total-usd">$0.00</div>
+              <div class="hero-sub muted" id="total-sub">across — accounts</div>
+            </div>
+            <div class="hero-side">
+              <div class="kta-line"><span class="asset-ico kta-bg">K</span>
+                <div><div class="kta-name">KTA</div><div class="muted small" id="kta-price-line">—</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="hero-chips" id="hero-chips"></div>
+        </div>
+        <div class="alloc-card">
+          <div class="panel-title">Allocation</div>
+          <div id="chart-alloc" class="chart"></div>
+        </div>
+      </div>
+
+      <div class="ov-grid">
+        <div class="card">
+          <div class="panel-title-row"><div class="panel-title">Assets</div><button class="link-btn" data-goto="assets">View all →</button></div>
+          <div id="ov-assets" class="mini-assets"></div>
+        </div>
+        <div class="card">
+          <div class="panel-title-row"><div class="panel-title">Your accounts</div><button class="link-btn" data-goto="accounts">View all →</button></div>
+          <div id="ov-accounts" class="mini-accounts"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="panel-title-row"><div class="panel-title">Recent activity</div><button class="link-btn" data-goto="activity">View all →</button></div>
+        <div class="table-wrap"><table class="bank-table"><tbody id="ov-activity"></tbody></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ACCOUNTS ============ -->
+  <section id="tab-accounts" class="tabpane hidden">
+    <div class="page-head">
+      <h1>Accounts</h1>
+      <button class="primary-btn" id="add-account-btn">+ Add account</button>
+    </div>
+    <div class="sub-head"><h2>Wallet accounts</h2><span class="muted small" id="wallet-count"></span></div>
+    <div id="account-list" class="account-grid"></div>
+    <div class="sub-head"><h2>Storage accounts</h2><span class="muted small">discovered via on-chain access-control lists</span></div>
+    <div class="storage-note">
+      <span class="icon">💡</span>
+      <span><b>Why do I see storage accounts I never opened?</b> An ACL entry only means your account has been <i>granted a permission</i> on that storage account — not that you created it. Token issuers and anchors (e.g. the USD/EUR stablecoins) create storage accounts to hold your token balances and grant your account access. DashKee checks the OWNER flag of each one, so you can see exactly which are yours.</span>
+    </div>
+    <div id="storage-list" class="account-grid"></div>
+    <details id="empty-storage" class="empty-storage hidden">
+      <summary id="empty-storage-summary"></summary>
+      <div id="empty-storage-grid" class="empty-storage-grid"></div>
+    </details>
+  </section>
+
+  <!-- ============ ASSETS ============ -->
+  <section id="tab-assets" class="tabpane hidden">
+    <div class="page-head"><h1>Assets</h1><span class="muted small" id="assets-sub"></span></div>
+    <div class="card">
+      <table class="bank-table assets-table">
+        <thead><tr><th>Asset</th><th>Price</th><th>Balance</th><th>Value</th><th>Allocation</th><th>Held in</th></tr></thead>
+        <tbody id="assets-body"></tbody>
+      </table>
+    </div>
+    <div class="stable-note muted small">USD is Keeta's on-chain USDC-converted stablecoin (pegged ≈ $1.00). EUR is priced with the live ECB reference rate. KTA is priced from CoinGecko. Tokens without a known price show balance only.</div>
+  </section>
+
+  <!-- ============ ACTIVITY ============ -->
+  <section id="tab-activity" class="tabpane hidden">
+    <div class="page-head"><h1>Activity</h1><span class="muted small">your accounts' recent chain blocks, merged</span></div>
+    <div class="card">
+      <div class="table-wrap"><table class="bank-table"><tbody id="activity-body"></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- ============ NETWORK ============ -->
+  <section id="tab-network" class="tabpane hidden">
+    <div class="page-head"><h1>Network</h1><span class="net-status-inline"><span id="live-dot" class="live-dot"></span><span id="chain-time" class="mono">—</span></span></div>
+    <section class="stat-grid">
+      <div class="card stat"><div class="stat-label">Live throughput</div><div class="stat-value" id="tps">—</div><div class="muted small">transactions / second</div></div>
+      <div class="card stat"><div class="stat-label">Total transactions</div><div class="stat-value" id="tx-count">—</div><div class="muted small" id="block-count">— blocks</div></div>
+      <div class="card stat"><div class="stat-label">Median settlement</div><div class="stat-value" id="settle-median">—</div><div class="muted small" id="settle-p90">p90 —</div></div>
+      <div class="card stat"><div class="stat-label">On-chain KTA supply</div><div class="stat-value" id="supply">—</div><div class="muted small">18 decimals</div></div>
+    </section>
+    <section class="chart-grid">
+      <div class="card"><div class="panel-title-row"><div class="panel-title">Network throughput</div><span class="muted small" id="tps-window">sampling…</span></div><div id="chart-tps" class="chart"></div></div>
+      <div class="card"><div class="panel-title-row"><div class="panel-title">Settlement time distribution</div><span class="muted small">cumulative</span></div><div id="chart-settle" class="chart"></div></div>
+    </section>
+    <section class="chart-grid">
+      <div class="card"><div class="panel-title-row"><div class="panel-title">KTA price — 7 day</div><span class="muted small" id="kta-changes"></span></div><div id="chart-price" class="chart"></div></div>
+      <div class="card"><div class="panel-title-row"><div class="panel-title">Voting power distribution</div><span class="muted small">dPoS</span></div><div id="chart-reps" class="chart"></div></div>
+    </section>
+    <section class="feed-grid">
+      <div class="card">
+        <div class="panel-title-row"><div class="panel-title">Network activity</div><span class="chip live-chip" id="feed-state">syncing</span></div>
+        <div class="table-wrap"><table class="bank-table"><tbody id="feed-body"><tr><td class="muted empty">Listening to the network…</td></tr></tbody></table></div>
+      </div>
+      <div class="side-col">
+        <div class="card">
+          <div class="panel-title-row"><div class="panel-title">Representatives</div></div>
+          <table class="bank-table"><tbody id="rep-body"></tbody></table>
+        </div>
+        <div class="card">
+          <div class="panel-title-row"><div class="panel-title">Network details</div></div>
+          <dl class="kv">
+            <div><dt>Node version</dt><dd id="nd-version">—</dd></div>
+            <div><dt>Consensus</dt><dd>Delegated Proof of Stake</dd></div>
+            <div><dt>Peers (observed)</dt><dd id="nd-peers">—</dd></div>
+            <div><dt>Ledger checksum</dt><dd class="mono" id="nd-checksum">—</dd></div>
+            <div><dt>Network address</dt><dd class="mono" id="nd-netaddr">—</dd></div>
+          </dl>
+        </div>
+      </div>
+    </section>
+  </section>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>Read-only dashboard · data from Keeta mainnet via <code>@keetanetwork/keetanet-client</code> · market data CoinGecko & ECB (Frankfurter)</span>
+    <span><a href="https://keeta.com" target="_blank" rel="noopener">keeta.com</a> · <a href="https://docs.keeta.com" target="_blank" rel="noopener">docs</a> · <a href="https://explorer.keeta.com" target="_blank" rel="noopener">official explorer</a></span>
+  </div>
+</footer>
+
+<div id="toast" class="toast hidden"></div>
+<script src="/vendor/echarts.min.js"></script>
+<script src="/vendor/keetanet-browser.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

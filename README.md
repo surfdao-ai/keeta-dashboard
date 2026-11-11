@@ -1,0 +1,70 @@
+# DashKee — Personal Keeta Dashboard
+
+A **read-only personal dashboard** for the Keeta Network in an omarchy-style
+(tokyo-night) dark theme: your accounts, subaccounts, storage accounts, assets
+and stablecoins — live on mainnet, with a network-explorer tab on the side.
+
+## What it shows
+
+**Personal banking (Overview / Accounts / Assets / Activity):**
+
+- **Total balance hero** — USD value across all your connected accounts,
+  with allocation donut and quick stats
+- **Wallet accounts** — cards per account: balances, USD value, token
+  chips, on-chain name/height, link to the official explorer
+- **Subaccounts** — derived *in your browser* from a seed (indices 0..N);
+  the seed never leaves the browser, only public `keeta_…` addresses are sent
+- **Storage accounts** — discovered via on-chain access-control lists
+  (`listACLsByPrincipal`, `entity.isStorage()`), with their balances.
+  Each card shows your granted permissions (decoded from the ACL bitfield,
+  e.g. `513` → `ACCESS + STORAGE_CAN_HOLD`) **and the true owner**, resolved
+  by reading the storage account's own ACL for the `OWNER` bit. Accounts
+  you don't own are marked "MANAGED"; zero-balance accounts you don't own
+  collapse into an expandable list. This answers the common surprise:
+  seeing many storage accounts does **not** mean you created them —
+  anchors and token issuers grant your account access to storage accounts
+  that hold your token balances.
+- **Assets table** — every token you hold, aggregated across accounts, with
+  token logos & decimals decoded from on-chain metadata (`logoURI`,
+  `decimalPlaces`), live prices where known, allocation bars
+- **Stablecoins** — Keeta's native USD token (USDC-converted, pegged ≈ $1)
+  and EUR token (live ECB reference rate via Frankfurter)
+- **Activity** — merged, sorted chain history across all accounts with
+  Sent/Received amounts and operation labels
+
+**Network tab** (kept from the explorer build): live TPS, settlement-time
+histogram with median/p90, voting-power donut, KTA 7-day price chart,
+representatives, and a recent-blocks feed.
+
+## Security model
+
+- Everything is **read-only**; the server uses a throwaway random signer
+- Seed input is processed **client-side only** with the official SDK
+  (self-hosted `keetanet-browser.js`); only derived public addresses
+  are transmitted, and nothing is stored server-side
+- Watched addresses and derived addresses are saved in `localStorage`
+
+## Run it
+
+```bash
+npm install
+npm start          # → http://localhost:3000
+```
+
+Options: `PORT=8080 npm start` · `KEETA_NETWORK=test npm start`
+
+## API
+
+```
+POST /api/lookup    {addresses}      info, type (standard/token/storage),
+                                     balances + token metadata + prices
+POST /api/owned     {addresses}      storage accounts discovered via ACLs
+POST /api/activity  {addresses}      merged chain history
+GET  /api/network                    reps, status, settlement histogram
+GET  /api/recent                     recent vote-staple blocks feed
+GET  /api/market                     CoinGecko KTA data + 7d series
+```
+
+Pricing: KTA from CoinGecko · USD token pegged $1 (on-chain USDC conversion)
+· EUR token via ECB reference rate · other tokens show balance only.
+
