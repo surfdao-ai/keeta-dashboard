@@ -142,6 +142,21 @@
   <!-- ============ ASSETS ============ -->
   <section id="tab-assets" class="tabpane hidden">
     <div class="page-head"><h1>Assets</h1><span class="muted small" id="assets-sub"></span></div>
+    <div class="card pl-card">
+      <div class="pl-head">
+        <div>
+          <div class="pl-title">Portfolio history</div>
+          <div class="muted small">snapshots live in this browser only — never sent to the server</div>
+        </div>
+        <div class="pl-actions">
+          <button id="csv-assets" class="mini-btn">Export CSV</button>
+          <button id="csv-history" class="mini-btn">History CSV</button>
+          <button id="snap-clear" class="mini-btn danger">Clear</button>
+        </div>
+      </div>
+      <div class="pl-stats" id="pl-stats"></div>
+      <div id="pl-chart" class="pl-chart"></div>
+    </div>
     <div class="card">
       <table class="bank-table assets-table">
         <thead><tr><th>Asset</th><th>Price</th><th>Balance</th><th>Value</th><th>Allocation</th><th>Held in</th></tr></thead>

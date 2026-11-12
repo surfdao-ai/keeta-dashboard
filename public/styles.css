@@ -330,3 +330,20 @@ footer { border-top: 1px solid var(--border-soft); padding: 18px 28px; font-size
   .tabs { order: 3; min-width: 100%; overflow-x: auto; }
   main { padding: 18px 14px 36px; }
 }
+
+/* ============ portfolio history (assets tab) ============ */
+.pl-card { margin-bottom: 14px; }
+.pl-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.pl-title { font-weight: 700; color: var(--bright); font-size: 15px; }
+.pl-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.mini-btn {
+  border: 1px solid var(--border); background: var(--bg-soft); color: var(--text);
+  font-size: 11.5px; font-weight: 600; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+  font-family: var(--mono); transition: background .15s, color .15s, border-color .15s;
+}
+.mini-btn:hover { background: var(--card-2); color: var(--bright); border-color: var(--accent); }
+.mini-btn.danger:hover { color: var(--red); border-color: var(--red); }
+.pl-stats { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-top: 12px; }
+.pl-big { font-size: 26px; font-weight: 800; color: var(--bright); font-family: var(--mono); }
+.pl-chg { font-size: 12.5px; font-weight: 700; font-family: var(--mono); }
+.pl-chart { height: 190px; margin-top: 8px; }

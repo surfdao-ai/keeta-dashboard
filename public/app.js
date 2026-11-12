@@ -92,6 +92,7 @@ function switchTab(tab) {
   $('tab-' + tab).classList.remove('hidden');
   if (tab === 'network') startNetworkPolling();
   else stopNetworkPolling();
+  if (tab === 'assets') renderHistory();
 }
 
 /* ---------- connect modal ---------- */
@@ -231,6 +232,7 @@ async function refreshPortfolio() {
     state.storage = owned;
     state.activity = activity;
     renderAll();
+    recordSnapshot();
   } catch (e) {
     toast('Portfolio refresh failed: ' + e.message, 4000);
   } finally {
@@ -430,6 +432,116 @@ function renderAccounts() {
     })
   );
 }
+
+/* ---------- portfolio history (localStorage snapshots) ---------- */
+const SNAP_KEY = 'dashkee_snaps';
+const SNAP_MAX = 400;
+const SNAP_THROTTLE = 15 * 60 * 1000; // one snapshot per 15 min per portfolio
+
+function loadSnaps() {
+  try { return JSON.parse(localStorage.getItem(SNAP_KEY)) || []; } catch { return []; }
+}
+const snaps = { list: loadSnaps() };
+const saveSnaps = () => {
+  try { localStorage.setItem(SNAP_KEY, JSON.stringify(snaps.list.slice(-SNAP_MAX))); } catch { /* quota */ }
+};
+const portfolioSig = (addrs) => [...addrs].sort().join(',');
+
+function recordSnapshot() {
+  if (!state.lookups) return;
+  const assets = allAssets().map((a) => ({
+    code: a.code || null, name: a.name || null, token: a.address,
+    amount: a.amount, price: a.price, value: a.value,
+  }));
+  const total = assets.reduce((s, a) => s + (a.value || 0), 0);
+  const sig = portfolioSig(state.accounts.map((a) => a.address));
+  const snap = { t: Date.now(), sig, total, assets };
+  const last = snaps.list[snaps.list.length - 1];
+  if (last && last.sig === sig && Date.now() - last.t < SNAP_THROTTLE) {
+    snaps.list[snaps.list.length - 1] = snap; // rolling update within window
+  } else {
+    snaps.list.push(snap);
+  }
+  saveSnaps();
+  if (state.tab === 'assets') renderHistory();
+}
+
+function renderHistory() {
+  const sig = portfolioSig(state.accounts.map((a) => a.address));
+  const series = snaps.list.filter((s) => s.sig === sig);
+  const el = $('pl-stats');
+  if (!series.length) {
+    el.innerHTML = '<span class="muted small">No snapshots yet for these accounts — a point is recorded each time your portfolio refreshes (every 30s).</span>';
+    if (charts['pl-chart']) charts['pl-chart'].clear();
+    return;
+  }
+  const first = series[0], cur = series[series.length - 1];
+  const pl = cur.total - first.total;
+  const plPct = first.total > 0 ? (pl / first.total) * 100 : null;
+  const cls = pl > 0 ? 'green' : pl < 0 ? 'red' : '';
+  el.innerHTML = `
+    <span class="pl-big ${cls}">${fmt.usdAuto(cur.total)}</span>
+    <span class="pl-chg ${cls}">${pl >= 0 ? '+' : '−'}${fmt.usdAuto(Math.abs(pl))}${plPct != null ? ` (${plPct >= 0 ? '+' : '−'}${Math.abs(plPct).toFixed(2)}%)` : ''} since first snapshot</span>
+    <span class="muted small">${series.length} snapshot${series.length !== 1 ? 's' : ''} · since ${fmt.date(first.t)}${snaps.list.length !== series.length ? ` · ${snaps.list.length - series.length} stored for other account sets` : ''}</span>`;
+  if (series.length < 2) {
+    if (charts['pl-chart']) charts['pl-chart'].clear();
+    return;
+  }
+  chart('pl-chart').setOption({
+    grid: { left: 64, right: 14, top: 14, bottom: 24 },
+    xAxis: { type: 'time', ...axisCommon, splitLine: { show: false } },
+    yAxis: { type: 'value', ...axisCommon, scale: true, axisLabel: { ...axisCommon.axisLabel, formatter: (v) => fmt.usdAuto(v) } },
+    tooltip: { ...tooltipCommon, trigger: 'axis', valueFormatter: (v) => fmt.usd(v) },
+    series: [areaSeries(series.map((s) => [s.t, s.total]), '#9ece6a', 'Portfolio')],
+  });
+}
+
+/* ---------- CSV export ---------- */
+function downloadCSV(filename, rows) {
+  const esc = (v) => {
+    const s = v == null ? '' : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const blob = new Blob([rows.map((r) => r.map(esc).join(',')).join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+const dayStamp = () => new Date().toISOString().slice(0, 10);
+
+$('csv-assets').onclick = () => {
+  const assets = allAssets();
+  if (!assets.length) return toast('Nothing to export yet');
+  const rows = [
+    ['Asset', 'Code', 'Token address', 'Price USD', 'Balance', 'Value USD', 'Held in accounts'],
+    ...assets.map((a) => [a.name || 'Unknown', a.code || '', a.address, a.price ?? '', a.amount, a.value ?? '', a.holders.length]),
+  ];
+  downloadCSV(`dashkee-assets-${dayStamp()}.csv`, rows);
+  toast('Assets CSV downloaded');
+};
+
+$('csv-history').onclick = () => {
+  const series = snaps.list;
+  if (!series.length) return toast('No snapshots recorded yet');
+  const rows = [['Snapshot time (ISO)', 'Portfolio total USD', 'Asset', 'Code', 'Token address', 'Balance', 'Price USD', 'Value USD']];
+  for (const s of series) {
+    const when = new Date(s.t).toISOString();
+    for (const a of s.assets) rows.push([when, s.total.toFixed(2), a.name || 'Unknown', a.code || '', a.token, a.amount, a.price ?? '', a.value ?? '']);
+  }
+  downloadCSV('dashkee-portfolio-history.csv', rows);
+  toast('History CSV downloaded');
+};
+
+$('snap-clear').onclick = () => {
+  if (!snaps.list.length) return toast('History is already empty');
+  if (!confirm(`Delete all ${snaps.list.length} portfolio snapshots from this browser?`)) return;
+  snaps.list = [];
+  saveSnaps();
+  renderHistory();
+  toast('Snapshot history cleared');
+};
 
 function renderAssets() {
   const assets = allAssets();

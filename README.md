@@ -4,6 +4,10 @@ A **read-only personal dashboard** for the Keeta Network in an omarchy-style
 (tokyo-night) dark theme: your accounts, subaccounts, storage accounts, assets
 and stablecoins — live on mainnet, with a network-explorer tab on the side.
 
+Portfolio history is built from **local snapshots** (localStorage only — a
+point is recorded each time your portfolio refreshes) and charted on the
+Assets tab with a P/L summary; assets and full history export to CSV.
+
 ## Data sources
 
 - **Keeta mainnet** via `@keetanetwork/keetanet-client` (all account/chain data)
