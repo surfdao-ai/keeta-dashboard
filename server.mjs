@@ -11,6 +11,16 @@ import { networkSnapshot, recentFeed, marketData, lookupAddresses, ownedStorageA
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json({ limit: '100kb' }));
+/* Same hardening as vercel.json — keep the two in sync */
+app.use((_req, res, next) => {
+  res.setHeader('Content-Security-Policy',
+    "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self' data:; manifest-src 'self'; connect-src 'self' https: wss:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, network: NETWORK, kta: KTA_TOKEN() }));

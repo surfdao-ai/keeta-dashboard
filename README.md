@@ -85,6 +85,10 @@ representatives, and a recent-blocks feed.
   are transmitted, and nothing is stored server-side
 - **Banking goes further**: the seed is never even *kept* for the
   session — it is used for a single anchor request and discarded
+- **Strict CSP** (`script-src 'self'`, no inline script, `base-uri`,
+  `form-action`, `frame-ancestors` all locked): even injected markup
+  cannot execute code that could read a seed. Anchor/node endpoints
+  stay reachable via `connect-src https: wss:`
 - Watched addresses and derived addresses are saved in `localStorage`
 
 ## Run it

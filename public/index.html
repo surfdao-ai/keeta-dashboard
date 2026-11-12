@@ -46,6 +46,16 @@
       </div>
       <div class="modal-body">
         <p class="muted">Two ways to open your dashboard. Everything is <b>read-only</b> — balances and history only.</p>
+        <details class="sec-box">
+          <summary>🛡 Why entering a seed here is safe (verify yourself)</summary>
+          <ul class="sec-list">
+            <li><b>The seed never crosses the network.</b> Derivation runs in your browser with the SDK bundled below (<code>/vendor/keetanet-browser.js</code> — self-hosted, no CDN). Only derived <b>public</b> <code>keeta_…</code> addresses are sent to the server. Check it live: open DevTools → Network while deriving.</li>
+            <li><b>The seed is never stored.</b> Not localStorage, not cookies, not the server — it exists in memory for the single operation, then it's gone. Closing the tab erases it.</li>
+            <li><b>The server can't leak what it never has.</b> DashKee's backend runs on a throwaway random key with read-only calls; there is no seed database to breach.</li>
+            <li><b>Injected code can't run.</b> A strict Content-Security-Policy allows only this site's own scripts — no inline or third-party script could ever read what you type.</li>
+            <li><b>Auditable.</b> The whole client is open source — <a href="https://github.com/surfdao-ai/keeta-dashboard" target="_blank" rel="noopener">read the derive + banking flow</a> before trusting it.</li>
+          </ul>
+        </details>
         <div class="connect-methods">
           <div class="method-card">
             <h3>🔒 Watch an address</h3>
