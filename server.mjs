@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 
-import { networkSnapshot, recentFeed, marketData, lookupAddresses, ownedStorageAccounts, activityFor, fiatUsdRates, tokenRegistry, KTA_TOKEN, NETWORK, cached } from './api/_lib.mjs';
+import { networkSnapshot, recentFeed, marketData, lookupAddresses, ownedStorageAccounts, activityFor, historicalPL, fiatUsdRates, tokenRegistry, KTA_TOKEN, NETWORK, cached } from './api/_lib.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -52,6 +52,14 @@ app.post('/api/activity', async (req, res) => {
     if (!addresses.length) { res.status(400).json({ error: 'addresses[] required' }); return; }
     res.json(await activityFor(addresses, Math.min(Number(req.body?.depth) || 12, 50)));
   } catch (e) { res.status(502).json({ error: e.message }); }
+});
+app.post('/api/history', async (req, res) => {
+  try {
+    const addresses = Array.isArray(req.body?.addresses) ? req.body.addresses : [];
+    if (!addresses.length) { res.status(400).json({ error: 'addresses[] required' }); return; }
+    if (!req.body?.from || !req.body?.to) { res.status(400).json({ error: 'from and to (ISO dates) required' }); return; }
+    res.json(await historicalPL(addresses, req.body.from, req.body.to));
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 const PORT = process.env.PORT || 3000;

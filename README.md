@@ -8,6 +8,14 @@ Portfolio history is built from **local snapshots** (localStorage only — a
 point is recorded each time your portfolio refreshes) and charted on the
 Assets tab with a P/L summary; assets and full history export to CSV.
 
+The Assets tab also has **Historical P&L for any past date range** (e.g.
+"last month" or "all of 2026"): balances at past dates are reconstructed by
+replaying each account's send/receive chain backward from its current
+balance, and USD values use historical KTA/BTC prices (CoinGecko, up to 364
+days) with constant peg prices for stablecoins/fiat tokens. Deposits and
+withdrawals are valued separately from gains, so moving funds doesn't show
+up as profit or loss.
+
 ## Data sources
 
 - **Keeta mainnet** via `@keetanetwork/keetanet-client` (all account/chain data)
@@ -75,6 +83,9 @@ POST /api/lookup     {addresses}      info, type (standard/token/storage),
 POST /api/owned      {addresses}      storage accounts via ACLs, decoded
                                       permissions, and true OWNER resolution
 POST /api/activity   {addresses}      merged chain history
+POST /api/history    {addresses,      historical P&L for a date range:
+                      from, to}       balances replayed from send/receive
+                                      events, priced with historical rates
 GET  /api/network                     reps, status, settlement histogram
 GET  /api/recent                      recent vote-staple blocks feed
 GET  /api/market                      CoinGecko KTA data + 7d series + DEX mark

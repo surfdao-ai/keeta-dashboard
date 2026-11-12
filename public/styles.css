@@ -347,3 +347,13 @@ footer { border-top: 1px solid var(--border-soft); padding: 18px 28px; font-size
 .pl-big { font-size: 26px; font-weight: 800; color: var(--bright); font-family: var(--mono); }
 .pl-chg { font-size: 12.5px; font-weight: 700; font-family: var(--mono); }
 .pl-chart { height: 190px; margin-top: 8px; }
+
+/* ============ historical P&L (chain replay) ============ */
+.pl-range { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.pl-range select, .pl-range input[type="date"] {
+  background: var(--bg-soft); border: 1px solid var(--border); color: var(--text);
+  font-family: var(--mono); font-size: 12px; padding: 6px 10px; border-radius: 8px;
+}
+.pl-range select:focus, .pl-range input:focus { outline: none; border-color: var(--accent); }
+.pl-range input[type="date"] { color-scheme: dark; }
+.hpl-table { font-size: 12.5px; margin-top: 12px; }

@@ -207,6 +207,229 @@ export async function cgSimple(id) {
   });
 }
 
+/* Historical daily price series from CoinGecko (free tier: last 365 days). */
+const CG_HIST_IDS = { KTA: 'keeta', CBTC: 'bitcoin' };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function cgPriceHistory(id, fromSec, toSec) {
+  const day = 86_400_000;
+  const key = `cghist:${id}:${Math.floor(fromSec * 1000 / day)}:${Math.floor(toSec * 1000 / day)}`;
+  return cached(key, 10 * 60_000, async () => {
+    let lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(`https://api.coingecko.com/api/v3/coins/${id}/market_chart/range?vs_currency=usd&from=${fromSec}&to=${toSec}`);
+        if (res.status === 429) { lastErr = new Error('coingecko rate limited'); await sleep(1500 * (attempt + 1)); continue; }
+        if (!res.ok) throw new Error('coingecko range ' + res.status);
+        const j = await res.json();
+        return (j.prices || []).map(([t, p]) => [t, p]);
+      } catch (e) { lastErr = e; await sleep(1200); }
+    }
+    // fallback: days= endpoint (works when the window ends near "now")
+    try {
+      const days = Math.max(1, Math.ceil((toSec * 1000 - fromSec * 1000) / 86_400_000) + 1);
+      const res = await fetch(`https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=${days}`);
+      if (res.ok) {
+        const j = await res.json();
+        const prices = (j.prices || []).filter(([t]) => t >= fromSec * 1000 - 86_400_000 && t <= toSec * 1000 + 86_400_000);
+        if (prices.length) return prices;
+      }
+    } catch { /* fallthrough */ }
+    throw lastErr ?? new Error('coingecko range failed');
+  });
+}
+function priceAtSeries(series, tsMs) {
+  if (!series?.length) return null;
+  let lo = 0, hi = series.length - 1, best = series[0];
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (series[mid][0] <= tsMs) { best = series[mid]; lo = mid + 1; } else hi = mid - 1;
+  }
+  if (best[0] > tsMs && series[0][0] > tsMs) return series[0][1]; // earliest known
+  return best[1];
+}
+
+/* ---------------- historical P&L (reconstructed from chain) ---------------- */
+/* Balances at any past date T are derived by replaying SEND/RECEIVE events
+   backward from the current balance: bal(T) = bal(now) − Σ_{events after T} delta.
+   Only events inside [from, to] matter, so the account's full history depth
+   only needs to cover that window. USD values use historical KTA/BTC prices
+   (CoinGecko range) and constant peg prices for stablecoins/fiat tokens. */
+const HIST_CHAIN_DEPTH = 250;
+
+export async function historicalPL(addresses, fromISO, toISO) {
+  const now = Date.now();
+  let from = new Date(fromISO), to = new Date(toISO);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) throw new Error('Invalid dates');
+  if (to.getTime() > now + 5 * 60_000) to = new Date(now);
+  if (from.getTime() >= to.getTime()) throw new Error('"from" must be before "to"');
+  const CG_MAX_DAYS = 364;
+  let clamped = false;
+  if (now - from.getTime() > CG_MAX_DAYS * 86_400_000) {
+    from = new Date(now - CG_MAX_DAYS * 86_400_000);
+    clamped = true;
+  }
+  const fromMs = from.getTime(), toMs = to.getTime();
+
+  const uniq = [...new Set(addresses.filter(isAddress))].slice(0, MAX_ADDRESSES);
+  if (!uniq.length) throw new Error('addresses[] required');
+  const { client } = state();
+
+  // current balances + token metadata (human units)
+  const lookups = await lookupAddresses(uniq);
+  const accounts = lookups.accounts;
+  const existsSet = new Set(accounts.filter((a) => a.exists).map((a) => a.address));
+
+  // fetch chains (desc by date after we sort)
+  const chains = await Promise.all(accounts.map(async (a) => {
+    if (!a.exists) return { address: a.address, blocks: [] };
+    try {
+      const chain = await withTimeout(client.getChain(KeetaNet.lib.Account.fromPublicKeyString(a.address), { depth: HIST_CHAIN_DEPTH }), 15000, 'chain');
+      return { address: a.address, blocks: S(chain) };
+    } catch { return { address: a.address, blocks: [] }; }
+  }));
+
+  // token metadata (decimals/names) for every token seen in balances or events
+  const tokenSet = new Set();
+  for (const a of accounts) for (const b of a.balances || []) tokenSet.add(b.address);
+  const rawEvents = []; // { date, account, token, rawDelta } — scaled after decimals known
+  for (const c of chains) {
+    const blocks = [...c.blocks].sort((x, y) => new Date(y.date) - new Date(x.date));
+    for (const blk of blocks) {
+      const bd = blk.date ? new Date(blk.date).getTime() : null;
+      if (bd == null || bd <= fromMs || bd > toMs) continue; // window is (from, to]
+      for (const o of blk.operations || []) {
+        const type = KeetaNet.lib.Block.OperationType[o.type] ?? String(o.type);
+        if (type !== 'SEND' && type !== 'RECEIVE') continue;
+        const token = o.token || KTA_TOKEN();
+        tokenSet.add(token);
+        rawEvents.push({ date: bd, account: c.address, token, rawDelta: (type === 'SEND' ? -1 : 1) * Number(BigInt(o.amount)) });
+      }
+    }
+  }
+  const metas = await Promise.all([...tokenSet].map((t) => tokenMeta(t).catch(() => null)));
+  const metaBy = Object.fromEntries(metas.filter(Boolean).map((m) => [m.address, m]));
+  const events = rawEvents.map((e) => ({
+    ...e,
+    delta: e.rawDelta / Math.pow(10, metaBy[e.token]?.decimals ?? 18), // human units, same as balances
+  }));
+
+  // USD price source per token: historical series where possible,
+  // otherwise constant current price (labeled so the UI can warn)
+  const fromSec = Math.floor(fromMs / 1000), toSec = Math.floor(toMs / 1000);
+  const priceSources = new Map(); // token -> { series, fallback } | { constant }
+  for (const t of tokenSet) {
+    const code = metaBy[t]?.code?.toUpperCase();
+    const histId = t === KTA_TOKEN() ? CG_HIST_IDS.KTA : CG_HIST_IDS[code ?? ''] ?? null;
+    if (histId) {
+      const series = await cgPriceHistory(histId, fromSec, toSec).catch(() => null);
+      if (series?.length) {
+        priceSources.set(t, { series, fallback: false });
+        continue;
+      }
+    }
+    priceSources.set(t, { constant: await priceFor(t).catch(() => null) });
+  }
+  const priceAt = (token, tsMs) => {
+    const src = priceSources.get(token);
+    if (!src) return null;
+    if (src.series) return src.series.length ? priceAtSeries(src.series, tsMs) : null;
+    return src.constant ?? null;
+  };
+  const priceKind = (token) => {
+    const src = priceSources.get(token);
+    if (!src) return 'unknown';
+    if (src.series) return 'historical';
+    return src.constant != null ? 'current' : 'unpriced';
+  };
+
+  // current balances per account per token (human units), plus zero for event-only tokens
+  const current = new Map(); // `${account}|${token}` -> amount
+  for (const a of accounts) for (const b of a.balances || []) current.set(`${a.address}|${b.address}`, b.amount);
+  for (const e of events) {
+    const k = `${e.account}|${e.token}`;
+    if (!current.has(k)) current.set(k, 0);
+  }
+
+  // balances at time T: walk events after T in reverse
+  const balancesAt = (T) => {
+    const out = new Map(current);
+    for (const e of events) {
+      if (e.date > T) {
+        const k = `${e.account}|${e.token}`;
+        out.set(k, (out.get(k) ?? 0) - e.delta);
+      }
+    }
+    return out;
+  };
+
+  // sample points: from, each event date inside window (asc), to
+  const pointTimes = [...new Set(events.filter((e) => e.date > fromMs && e.date <= toMs).map((e) => e.date))].sort((a, b) => a - b);
+  const samples = [fromMs, ...pointTimes, toMs];
+  const points = samples.map((T) => {
+    const bal = balancesAt(T);
+    const perToken = {};
+    let total = 0;
+    for (const t of tokenSet) {
+      let amt = 0;
+      for (const a of accounts) amt += bal.get(`${a.address}|${t}`) ?? 0;
+      if (!amt) continue;
+      const p = priceAt(t, T);
+      const v = p != null ? amt * p : null;
+      if (v != null) total += v;
+      perToken[t] = { amount: amt, price: p, value: v };
+    }
+    return { t: T, total, perToken };
+  });
+  const start = points[0], end = points[points.length - 1];
+
+  // per-token summary + net transfer flow (flows priced at their own date)
+  const tokenRows = [...tokenSet].map((t) => {
+    const startBal = start.perToken[t]?.amount ?? 0;
+    const endBal = end.perToken[t]?.amount ?? 0;
+    const flow = events
+      .filter((e) => e.token === t && e.date > fromMs && e.date <= toMs)
+      .reduce((s, e) => s + e.delta * (priceAt(t, e.date) ?? 0), 0);
+    return {
+      token: t,
+      name: metaBy[t]?.name ?? null,
+      code: metaBy[t]?.code ?? null,
+      priceKind: priceKind(t),
+      startBal, endBal,
+      startVal: start.perToken[t]?.value ?? 0,
+      endVal: end.perToken[t]?.value ?? 0,
+      netFlowUsd: flow,
+    };
+  }).filter((r) => r.startBal || r.endBal || r.netFlowUsd);
+
+  const netFlow = tokenRows.reduce((s, r) => s + r.netFlowUsd, 0);
+  const pnl = end.total - start.total - netFlow;
+  // an account whose chain was cut off by fetch depth before "from" means we
+  // may be missing events inside the window → flag insufficient coverage
+  const truncated = chains.some((c) => {
+    if (c.blocks.length < HIST_CHAIN_DEPTH) return false;
+    const oldest = Math.min(...c.blocks.map((b) => new Date(b.date).getTime()));
+    return oldest > fromMs;
+  });
+  const chainStart = chains.reduce((min, c) => {
+    const dates = c.blocks.map((b) => new Date(b.date).getTime()).filter((x) => !Number.isNaN(x));
+    return dates.length ? Math.min(min, ...dates) : min;
+  }, Infinity);
+
+  return S({
+    from: from.toISOString(), to: to.toISOString(),
+    clamped, truncated,
+    chainStart: Number.isFinite(chainStart) ? new Date(chainStart).toISOString() : null,
+    points: points.map((p) => ({ t: p.t, total: p.total })),
+    summary: {
+      startTotal: start.total, endTotal: end.total,
+      netFlowUsd: netFlow, pnl, pnlPct: start.total > 0 ? (pnl / (start.total + Math.max(0, netFlow))) * 100 : null,
+      unpricedTokens: tokenRows.filter((r) => r.priceKind === 'unpriced').length,
+    },
+    tokens: tokenRows,
+  });
+}
+
+
 export async function priceFor(tokenAddr) {
   if (tokenAddr === KTA_TOKEN()) {
     const m = await marketData().catch(() => null);

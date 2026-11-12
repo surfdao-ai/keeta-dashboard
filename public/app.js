@@ -543,6 +543,104 @@ $('snap-clear').onclick = () => {
   toast('Snapshot history cleared');
 };
 
+/* ---------- historical P&L (reconstructed from chain) ---------- */
+function hplRange() {
+  const preset = $('hpl-preset').value;
+  const now = new Date();
+  const to = now.toISOString();
+  if (preset === 'custom') {
+    const f = $('hpl-from').value, t = $('hpl-to').value;
+    if (!f || !t) { toast('Pick both dates for a custom range'); return null; }
+    return { from: f + 'T00:00:00Z', to: t + 'T23:59:59Z' };
+  }
+  const start = new Date(now);
+  if (preset === 'this-month') { start.setDate(1); start.setUTCHours(0, 0, 0, 0); }
+  else if (preset === 'last-month') {
+    start.setDate(1); start.setUTCHours(0, 0, 0, 0);
+    const end = new Date(start);
+    start.setUTCMonth(start.getUTCMonth() - 1);
+    return { from: start.toISOString(), to: new Date(end.getTime() - 1).toISOString() };
+  }
+  else if (preset === '30d') start.setUTCDate(start.getUTCDate() - 30);
+  else if (preset === '90d') start.setUTCDate(start.getUTCDate() - 90);
+  else if (preset === 'ytd') start.setUTCMonth(0, 1), start.setUTCHours(0, 0, 0, 0);
+  else if (preset === '2026') return { from: '2026-01-01T00:00:00Z', to };
+  else if (preset === '2025') return { from: '2025-01-01T00:00:00Z', to: '2025-12-31T23:59:59Z' };
+  return { from: start.toISOString(), to };
+}
+
+async function computeHPL() {
+  const range = hplRange();
+  if (!range) return;
+  const addrs = [...state.accounts.map((a) => a.address), ...(state.storage?.storageAccounts || []).map((s) => s.address)];
+  if (!addrs.length) return toast('Connect an account first');
+  const btn = $('hpl-compute');
+  btn.disabled = true; btn.textContent = 'Replaying chain…';
+  try {
+    const data = await getJSON('/api/history', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ addresses: addrs, from: range.from, to: range.to }),
+    });
+    renderHPL(data);
+  } catch (e) {
+    toast('P&L computation failed: ' + e.message, 4000);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Compute P&L';
+  }
+}
+$('hpl-compute').onclick = computeHPL;
+$('hpl-preset').onchange = () => {
+  const custom = $('hpl-preset').value === 'custom';
+  $('hpl-from').classList.toggle('hidden', !custom);
+  $('hpl-to').classList.toggle('hidden', !custom);
+};
+
+function renderHPL(data) {
+  const s = data.summary;
+  const cls = s.pnl > 0 ? 'green' : s.pnl < 0 ? 'red' : '';
+  const flowCls = s.netFlowUsd > 0 ? 'green' : s.netFlowUsd < 0 ? 'red' : '';
+  const period = `${fmt.date(data.from)} → ${fmt.date(data.to)}`;
+  $('hpl-summary').classList.remove('hidden');
+  $('hpl-summary').innerHTML = `
+    <span class="pl-big ${cls}">${s.pnl >= 0 ? '+' : '−'}${fmt.usdAuto(Math.abs(s.pnl))}</span>
+    <span class="pl-chg ${cls}">P&amp;L${s.pnlPct != null ? ` (${s.pnl >= 0 ? '+' : '−'}${Math.abs(s.pnlPct).toFixed(2)}%)` : ''}</span>
+    <span class="muted small">${period}</span>
+    <span class="muted small">value ${fmt.usdAuto(s.startTotal)} → ${fmt.usdAuto(s.endTotal)}</span>
+    <span class="muted small">net transfers <span class="${flowCls}">${s.netFlowUsd >= 0 ? '+' : '−'}${fmt.usdAuto(Math.abs(s.netFlowUsd))}</span></span>`;
+  $('hpl-chart').classList.remove('hidden');
+  chart('hpl-chart').setOption({
+    grid: { left: 64, right: 14, top: 14, bottom: 24 },
+    xAxis: { type: 'time', ...axisCommon, splitLine: { show: false } },
+    yAxis: { type: 'value', ...axisCommon, scale: true, axisLabel: { ...axisCommon.axisLabel, formatter: (v) => fmt.usdAuto(v) } },
+    tooltip: { ...tooltipCommon, trigger: 'axis', valueFormatter: (v) => fmt.usd(v) },
+    series: [{
+      name: 'Portfolio value', type: 'line', step: 'end', symbol: 'none',
+      data: (data.points || []).map((p) => [p.t, p.total]),
+      lineStyle: { width: 2, color: '#7aa2f7' }, itemStyle: { color: '#7aa2f7' },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: '#7aa2f733' }, { offset: 1, color: '#7aa2f703' },
+        ]),
+      },
+    }],
+  });
+  const KIND = { historical: 'historical price', current: 'current price', unpriced: 'no price', unknown: 'no price' };
+  $('hpl-table-wrap').classList.remove('hidden');
+  $('hpl-body').innerHTML = (data.tokens || []).map((t) => `<tr>
+      <td><div class="asset-cell">${assetIcon(t)}<div><div class="mini-name">${t.name || 'Unknown token'}</div><div class="muted small mono">${fmt.short(t.token, 10, 5)}</div></div></div></td>
+      <td><span class="muted small">${KIND[t.priceKind] || t.priceKind}</span></td>
+      <td class="right small">${fmt.compact(t.startBal, Math.abs(t.startBal) < 1 ? 6 : 2)} → <span class="strong">${fmt.compact(t.endBal, Math.abs(t.endBal) < 1 ? 6 : 2)}</span></td>
+      <td class="right small">${t.startVal || t.endVal ? `${fmt.usdAuto(t.startVal)} → <span class="strong">${fmt.usdAuto(t.endVal)}</span>` : '<span class="muted">—</span>'}</td>
+      <td class="right small ${t.netFlowUsd > 0 ? 'green' : t.netFlowUsd < 0 ? 'red' : 'muted'}">${t.netFlowUsd ? (t.netFlowUsd > 0 ? '+' : '−') + fmt.usdAuto(Math.abs(t.netFlowUsd)) : '—'}</td>
+    </tr>`).join('') || '<tr><td colspan="5" class="muted empty">No token movements found in this range</td></tr>';
+  const notes = [];
+  if (data.clamped) notes.push('CoinGecko free tier only provides 364 days of price history — the range was clamped');
+  if (data.truncated) notes.push(`some accounts have more chain history than was scanned — send/receive events before ${fmt.date(data.chainStart)} may be missing`);
+  if (s.unpricedTokens) notes.push(`${s.unpricedTokens} token${s.unpricedTokens !== 1 ? 's' : ''} without a known price are excluded from USD totals`);
+  notes.push('P&L = end value − start value − net transfers (transfers priced at their own dates)');
+  $('hpl-note').textContent = notes.join(' · ');
+}
+
 function renderAssets() {
   const assets = allAssets();
   const total = assets.reduce((a, b) => a + (b.value ?? 0), 0);

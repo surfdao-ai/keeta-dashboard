@@ -157,6 +157,33 @@
       <div class="pl-stats" id="pl-stats"></div>
       <div id="pl-chart" class="pl-chart"></div>
     </div>
+    <div class="card pl-card">
+      <div class="pl-head">
+        <div>
+          <div class="pl-title">Historical P&amp;L — replayed from the chain</div>
+          <div class="muted small">balances reconstructed from send/receive history, priced with historical KTA rates · deposits/withdrawals valued separately from gains</div>
+        </div>
+      </div>
+      <div class="pl-range">
+        <select id="hpl-preset">
+          <option value="this-month">This month</option>
+          <option value="last-month">Last month</option>
+          <option value="30d">Last 30 days</option>
+          <option value="90d">Last 90 days</option>
+          <option value="ytd">Year to date</option>
+          <option value="2026">All of 2026</option>
+          <option value="2025">All of 2025</option>
+          <option value="custom">Custom range…</option>
+        </select>
+        <input type="date" id="hpl-from" class="hidden">
+        <input type="date" id="hpl-to" class="hidden">
+        <button id="hpl-compute" class="mini-btn">Compute P&amp;L</button>
+      </div>
+      <div id="hpl-summary" class="pl-stats hidden"></div>
+      <div id="hpl-chart" class="pl-chart hidden"></div>
+      <div id="hpl-table-wrap" class="hidden"><table class="bank-table hpl-table"><thead><tr><th>Asset</th><th>Price basis</th><th class="right">Start → End balance</th><th class="right">Start → End value</th><th class="right">Net transfers</th></tr></thead><tbody id="hpl-body"></tbody></table></div>
+      <div class="muted small" id="hpl-note"></div>
+    </div>
     <div class="card">
       <table class="bank-table assets-table">
         <thead><tr><th>Asset</th><th>Price</th><th>Balance</th><th>Value</th><th>Allocation</th><th>Held in</th></tr></thead>
