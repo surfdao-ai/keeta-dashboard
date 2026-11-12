@@ -279,8 +279,9 @@ function assetIcon(asset, cls = 'asset-ico') {
 
 function renderOverview() {
   const walletAccs = state.lookups?.accounts || [];
-  const activeStorage = (state.storage?.storageAccounts || []).filter((s) => (s.balances || []).some((b) => b.amount !== 0) || s.owner?.isYours);
-  const accounts = [...walletAccs, ...activeStorage];
+  // savings rule: storage accounts count when they hold assets
+  const savingsAccs = (state.storage?.storageAccounts || []).filter((s) => (s.balances || []).some((b) => b.amount !== 0));
+  const accounts = [...walletAccs, ...savingsAccs];
   const assets = allAssets();
   const total = assets.reduce((a, b) => a + (b.value ?? 0), 0);
   const kta = assets.find((a) => a.isKta);
@@ -335,15 +336,16 @@ function renderOverview() {
       </div>
     </div>`).join('') || '<div class="muted">No balances found</div>';
 
-  // mini accounts
-  $('ov-accounts').innerHTML = accounts.slice(0, 5).map((acc, i) => `
+  // mini accounts — storage accounts shown only when they hold assets (savings rule)
+  const miniAccounts = [...walletAccs, ...savingsAccs];
+  $('ov-accounts').innerHTML = miniAccounts.slice(0, 5).map((acc, i) => `
     <div class="mini-row">
-      <span class="asset-ico ${acc.isStorage ? 'st-bg' : 'kta-bg'}">${acc.isStorage ? 'S' : (acc.name || labelFor(acc.address, i)).slice(0, 1)}</span>
+      <span class="asset-ico ${acc.isStorage ? 'sv-bg' : 'kta-bg'}">${acc.isStorage ? 'S' : (acc.name || labelFor(acc.address, i)).slice(0, 1)}</span>
       <div class="mini-main">
-        <div class="mini-name">${acc.isStorage ? 'Storage · ' + fmt.short(acc.address, 8, 4) : (acc.name || labelFor(acc.address, i))}</div>
-        <div class="muted small mono">${fmt.short(acc.address, 10, 5)} · ${acc.type || ''}</div>
+        <div class="mini-name">${acc.isStorage ? 'Savings · ' + (acc.owner?.name || fmt.short(acc.address, 8, 4)) : (acc.name || labelFor(acc.address, i))}</div>
+        <div class="muted small mono">${fmt.short(acc.address, 10, 5)} · ${acc.isStorage ? 'savings vault' : (acc.type || '')}</div>
       </div>
-      <div class="mini-num"><div>${acc.totalUsd != null ? fmt.usdAuto(acc.totalUsd) : ''}</div><div class="muted small">${(acc.balances || []).length} token${(acc.balances || []).length !== 1 ? 's' : ''}</div></div>
+      <div class="mini-num"><div>${acc.totalUsd != null ? fmt.usdAuto(acc.totalUsd) : ''}</div><div class="muted small">${(acc.balances || []).filter((b) => b.amount !== 0).length} token${(acc.balances || []).filter((b) => b.amount !== 0).length !== 1 ? 's' : ''}</div></div>
     </div>`).join('') || '<div class="muted">—</div>';
 
   renderActivityInto($('ov-activity'), 6);
@@ -373,52 +375,58 @@ function renderAccounts() {
     </div>`;
   }).join('') || '<div class="muted card-pad">No wallet accounts connected yet.</div>';
 
-  const walletStorage = storage.filter((s) => (s.balances || []).some((b) => b.amount !== 0) || s.owner?.isYours);
-  const empties = storage.filter((s) => !walletStorage.includes(s));
+  const vaults = storage.filter((s) => (s.balances || []).some((b) => b.amount !== 0));
+  const empties = storage.filter((s) => !vaults.includes(s));
+  const emptyYours = empties.filter((s) => s.owner?.isYours).length;
 
-  $('storage-list').innerHTML = walletStorage.length
-    ? walletStorage.map((acc) => {
+  $('storage-list').innerHTML = vaults.length
+    ? vaults.map((acc) => {
         const owner = acc.owner;
         const isYours = owner?.isYours === true;
-        const bals = (acc.balances || []).filter((b) => b.amount !== 0);
-        const perms = acc.permissions || [];
-        const permLabel = perms.map((p) => p.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())).join(' · ') || 'Access';
-        return `<div class="account-card storage">
+        const bals = (acc.balances || []).filter((b) => b.amount !== 0)
+          .sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
+        const permLabel = (acc.permissions || []).map((p) => p.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())).join(' · ') || 'Access';
+        const total = bals.reduce((s, b) => s + (b.value ?? 0), 0);
+        return `<div class="account-card savings">
         <div class="acc-head">
-          <span class="asset-ico st-bg">S</span>
+          <span class="asset-ico sv-bg">S</span>
           <div class="acc-name">
-            ${isYours ? 'Your storage account' : 'Storage account'}
+            Savings vault <span class="tag tag-savings">SAVINGS</span>
             <span class="sub muted small mono">${fmt.short(acc.address, 14, 8)}</span>
           </div>
-          <span class="tag ${isYours ? 'tag-owner' : 'tag-managed'}">${isYours ? 'OWNED BY YOU' : 'MANAGED'}</span>
+          <span class="tag ${isYours ? 'tag-owner' : 'tag-managed'}">${isYours ? 'YOURS' : 'MANAGED'}</span>
+        </div>
+        <div class="acc-total sv-total">${total !== 0 ? fmt.usdAuto(total) : '<span class="muted" style="font-size:14px">unpriced holdings</span>'}</div>
+        <div class="sav-rows">
+          ${bals.map((b) => `<div class="sav-row">
+            ${assetIcon(b, 'asset-ico sm')}
+            <div class="sav-name"><div class="mini-name">${b.name || 'Unknown token'}</div><div class="muted small">${b.kind === 'stablecoin' ? 'stablecoin · peg $1' : b.kind === 'fiat-token' ? 'fiat token · peg' : b.price != null ? 'market price' : 'no price'}</div></div>
+            <div class="right"><div class="strong">${fmt.compact(b.amount, Math.abs(b.amount) < 1 ? 6 : 4)}</div><div class="muted small">${b.value != null ? fmt.usdAuto(b.value) : '—'}</div></div>
+          </div>`).join('')}
         </div>
         <div class="perm-badges"><span class="tag tag-info">${permLabel}</span></div>
-        <div class="acc-total">${acc.totalUsd != null && acc.totalUsd !== 0 ? fmt.usdAuto(acc.totalUsd) : '<span class="muted" style="font-size:14px">empty</span>'}</div>
-        <div class="acc-bals">
-          ${bals.map((b) => `<span class="chip-item">${assetIcon(b, 'asset-ico sm')} ${fmt.compact(b.amount, 4)} ${b.name || ''}</span>`).join('') || ''}
-        </div>
         <div class="acc-foot muted small">
           ${owner
             ? (isYours
-                ? 'You hold the OWNER permission'
-                : `Owner: ${owner.name || fmt.short(owner.address, 10, 6)} · your access: ${permLabel}`)
-            : 'Owner not determinable (ACL fetch failed)'}
+                ? 'You hold the OWNER permission · <a href="https://explorer.keeta.com/account/' + acc.address + '" target="_blank" rel="noopener">explorer ↗</a>'
+                : `Provider: ${owner.name || fmt.short(owner.address, 10, 6)} · your access: ${permLabel} · <a href="https://explorer.keeta.com/account/${acc.address}" target="_blank" rel="noopener">explorer ↗</a>`)
+            : `Owner not determinable (ACL fetch failed) · <a href="https://explorer.keeta.com/account/${acc.address}" target="_blank" rel="noopener">explorer ↗</a>`}
         </div>
       </div>`;
       }).join('')
     : (empties.length
-        ? `<div class="muted card-pad">No storage accounts with balances. ${empties.length} account${empties.length !== 1 ? 's' : ''} grant you access but hold nothing — expand below.</span></div>`
+        ? `<div class="muted card-pad">No savings vaults with balances right now.${emptyYours ? ` You own ${emptyYours} empty vault${emptyYours !== 1 ? 's' : ''} — they appear here once assets arrive.` : ''} ${empties.length} account${empties.length !== 1 ? 's' : ''} grant access but hold nothing — expand below.</div>`
         : '<div class="muted card-pad">No storage accounts discovered via ACLs for your accounts. <span class="small">They appear here once an account controls or accesses one.</span></div>');
 
   // Collapse zero-balance storage accounts the user doesn't own
   const emptyDet = $('empty-storage');
   if (empties.length) {
     emptyDet.classList.remove('hidden');
-    $('empty-storage-summary').textContent = `${empties.length} more empty storage account${empties.length !== 1 ? 's' : ''} (access granted, no balances)`;
+    $('empty-storage-summary').textContent = `${empties.length} more empty storage account${empties.length !== 1 ? 's' : ''} (access granted, no balances)${emptyYours ? ` · ${emptyYours} owned by you` : ''}`;
     $('empty-storage-grid').innerHTML = empties.map((s) => `
       <div class="empty-storage-item">
         <span class="mono">${fmt.short(s.address, 12, 6)}</span>
-        <span class="muted">${(s.permissions || []).map((p) => p.replace(/_/g, ' ').toLowerCase()).join(', ') || 'access'}</span>
+        <span class="muted">${(s.permissions || []).map((p) => p.replace(/_/g, ' ').toLowerCase()).join(', ') || 'access'}${s.owner?.isYours ? ' · yours' : ''}</span>
       </div>`).join('');
   } else {
     emptyDet.classList.add('hidden');

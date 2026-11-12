@@ -393,3 +393,18 @@ footer { border-top: 1px solid var(--border-soft); padding: 18px 28px; font-size
   .account-grid { grid-template-columns: 1fr; }
   footer { padding: 14px; }
 }
+
+/* ============ savings vaults (storage accounts with holdings) ============ */
+.sv-bg { background: rgba(158, 206, 106, 0.16); color: var(--green); }
+.tag-savings {
+  background: rgba(158, 206, 106, 0.14); color: var(--green);
+  font-size: 9.5px; padding: 2px 7px; border-radius: 5px;
+  font-weight: 700; letter-spacing: 0.5px; margin-right: 6px; vertical-align: 1px;
+}
+.account-card.savings { border-left: 3px solid var(--green); background: linear-gradient(180deg, rgba(158,206,106,0.05), transparent 42%), var(--card); }
+.sv-total { font-size: 26px !important; color: var(--bright); }
+.sav-rows { display: flex; flex-direction: column; margin-bottom: 10px; }
+.sav-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--border-soft); }
+.sav-row:last-child { border-bottom: none; }
+.sav-name { flex: 1; min-width: 0; }
+.sav-row .right { text-align: right; }
