@@ -277,6 +277,10 @@ $('seed-save').onclick = () => {
 };
 
 /* ---------- banking cards ---------- */
+/* KYC/KYB-verified accounts float to the top of every list */
+const identityRank = (a) => (a.identity?.verified ? 0 : 1);
+const byIdentityFirst = (arr) => [...arr].sort((x, y) => identityRank(x) - identityRank(y));
+
 function maskAccount(n) {
   const s = String(n || '');
   if (s.length <= 4) return '••••';
@@ -284,8 +288,7 @@ function maskAccount(n) {
 }
 
 function renderBanking() {
-  const wallet = state.lookups?.accounts || [];
-  const relevant = wallet.filter((a) => !a.isToken);
+  const relevant = byIdentityFirst((state.lookups?.accounts || [])).filter((a) => !a.isToken);
   const sec = $('bank-section');
   const verifiedCount = relevant.filter((a) => a.identity?.verified).length;
   const countEl = $('bank-count');
@@ -478,8 +481,9 @@ function labelFor(addr, i) {
 }
 
 function allAssets() {
-  // aggregate balances across all accounts (incl. storage accounts)
-  const accounts = [...(state.lookups?.accounts || []), ...(state.storage?.storageAccounts || [])];  const byToken = new Map();
+  // aggregate balances across all accounts (incl. storage accounts);
+  // KYC-verified accounts list first everywhere
+  const accounts = [...byIdentityFirst(state.lookups?.accounts || []), ...(state.storage?.storageAccounts || [])];  const byToken = new Map();
   for (const acc of accounts) {
     for (const b of acc.balances || []) {
       if (b.amount === 0) continue;
@@ -508,7 +512,7 @@ function assetIcon(asset, cls = 'asset-ico') {
 }
 
 function renderOverview() {
-  const walletAccs = state.lookups?.accounts || [];
+  const walletAccs = byIdentityFirst(state.lookups?.accounts || []);
   // savings rule: storage accounts count when they hold assets
   const savingsAccs = (state.storage?.storageAccounts || []).filter((s) => (s.balances || []).some((b) => b.amount !== 0));
   const accounts = [...walletAccs, ...savingsAccs];
@@ -582,7 +586,7 @@ function renderOverview() {
 }
 
 function renderAccounts() {
-  const wallet = (state.lookups?.accounts || []);
+  const wallet = byIdentityFirst(state.lookups?.accounts || []);
   const storage = (state.storage?.storageAccounts || []);
   $('wallet-count').textContent = wallet.length + ' account' + (wallet.length !== 1 ? 's' : '');
 
@@ -592,7 +596,7 @@ function renderAccounts() {
     const idLine = id?.verified
       ? `<div class="id-line ok">🛡 KYC verified${id.issuers.length ? ' · ' + id.issuers[0] + (id.issuers.length > 1 ? ` +${id.issuers.length - 1}` : '') : ''}${id.validUntil ? ' · valid to ' + new Date(id.validUntil).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : ''}</div>`
       : '<div class="id-line muted small">No identity certificates on-chain</div>';
-    return `<div class="account-card">
+    return `<div class="account-card${acc.identity?.verified ? ' verified' : ''}">
       <div class="acc-head">
         <span class="asset-ico kta-bg">${(acc.name || labelFor(acc.address, i)).slice(0, 1)}</span>
         <div class="acc-name">

@@ -562,3 +562,7 @@ footer { border-top: 1px solid var(--border-soft); padding: 18px 28px; font-size
 :root[data-theme="light"] .net-pill { border-color: var(--border); }
 :root[data-theme="light"] .bank-table td { border-bottom-color: var(--border-soft); }
 :root[data-theme="light"] .toast { box-shadow: 0 10px 30px rgba(31, 36, 64, 0.25); }
+
+/* ============ KYC-priority accounts ============ */
+.account-card.verified { border-left: 3px solid var(--accent); }
+:root[data-theme="light"] .account-card.verified { border-left: 3px solid var(--accent); }
