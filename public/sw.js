@@ -2,7 +2,7 @@
    Navigation & static: stale-while-revalidate (fresh on second load),
    API: network-first with cache fallback so the dashboard still opens
    (with the last successful data) when offline. */
-const VERSION = 'dashkee-v3';
+const VERSION = 'dashkee-v4';
 const SHELL = [
   '/',
   '/app.js',

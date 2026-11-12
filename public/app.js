@@ -287,8 +287,14 @@ function renderBanking() {
   const wallet = state.lookups?.accounts || [];
   const relevant = wallet.filter((a) => !a.isToken);
   const sec = $('bank-section');
+  const verifiedCount = relevant.filter((a) => a.identity?.verified).length;
+  const countEl = $('bank-count');
+  if (countEl) countEl.textContent = verifiedCount
+    ? `${verifiedCount} verified${relevant.length !== verifiedCount ? ` · ${relevant.length - verifiedCount} locked` : ''}`
+    : (relevant.length ? `${relevant.length} locked (KYC needed)` : '');
   if (!relevant.length) { sec.classList.add('hidden'); return; }
   sec.classList.remove('hidden');
+  if (verifiedCount && !sec.dataset.opened) { sec.open = true; sec.dataset.opened = '1'; } // auto-open once
   $('bank-list').innerHTML = relevant.map((acc) => {
     const id = acc.identity;
     const verified = id?.verified;
@@ -400,16 +406,26 @@ function chart(id) {
   }
   return charts[id];
 }
-const C = { text: '#9aa5ce', grid: '#3b4261' };
+/* chart chrome follows the active theme */
+const C = {
+  get text() { return document.documentElement.dataset.theme === 'light' ? '#5a607d' : '#9aa5ce'; },
+  get grid() { return document.documentElement.dataset.theme === 'light' ? '#d8ddeb' : '#3b4261'; },
+  get split() { return document.documentElement.dataset.theme === 'light' ? 'rgba(90, 96, 125, 0.22)' : 'rgba(59, 66, 97, 0.45)'; },
+  get tooltipBg() { return document.documentElement.dataset.theme === 'light' ? '#ffffff' : '#2f344d'; },
+  get tooltipBorder() { return document.documentElement.dataset.theme === 'light' ? '#d8ddeb' : '#4a5075'; },
+  get tooltipText() { return document.documentElement.dataset.theme === 'light' ? '#1f2440' : '#eaf0ff'; },
+};
 const axisCommon = {
-  axisLine: { lineStyle: { color: C.grid } },
-  axisLabel: { color: C.text, fontSize: 10.5, fontFamily: 'JetBrains Mono, Menlo, monospace' },
+  get axisLine() { return { lineStyle: { color: C.grid } }; },
+  get axisLabel() { return { color: C.text, fontSize: 10.5, fontFamily: 'JetBrains Mono, Menlo, monospace' }; },
   axisTick: { show: false },
-  splitLine: { lineStyle: { color: 'rgba(59, 66, 97, 0.45)' } },
+  get splitLine() { return { lineStyle: { color: C.split } }; },
 };
 const tooltipCommon = {
-  backgroundColor: '#2f344d', borderColor: '#4a5075', borderWidth: 1,
-  textStyle: { color: '#eaf0ff', fontSize: 12 },
+  get backgroundColor() { return C.tooltipBg; },
+  get borderColor() { return C.tooltipBorder; },
+  borderWidth: 1,
+  get textStyle() { return { color: C.tooltipText, fontSize: 12 }; },
   extraCssText: 'box-shadow:0 8px 24px rgba(0,0,0,.4); border-radius:10px;',
 };
 function areaSeries(data, color, name) {
@@ -598,6 +614,10 @@ function renderAccounts() {
   const vaults = storage.filter((s) => (s.balances || []).some((b) => b.amount !== 0));
   const empties = storage.filter((s) => !vaults.includes(s));
   const emptyYours = empties.filter((s) => s.owner?.isYours).length;
+  const vaultCount = $('vault-count');
+  if (vaultCount) vaultCount.textContent = vaults.length
+    ? `${vaults.length} with assets${empties.length ? ` · ${empties.length} empty` : ''}`
+    : (empties.length ? `${empties.length} empty` : 'none discovered yet');
 
   $('storage-list').innerHTML = vaults.length
     ? vaults.map((acc) => {
@@ -657,6 +677,8 @@ function renderAccounts() {
   const sentSec = $('sentto-section');
   if (sentTo.length) {
     sentSec.classList.remove('hidden');
+    if (!sentSec.dataset.opened) { sentSec.open = true; sentSec.dataset.opened = '1'; } // auto-open once, then respect the user
+    $('sentto-count').textContent = `${sentTo.length} destination${sentTo.length !== 1 ? 's' : ''}`;
     $('sentto-list').innerHTML = sentTo.map((d) => {
       const watched = state.accounts.some((a) => a.address === d.address);
       return `<div class="sentto-item">
@@ -1200,6 +1222,18 @@ async function renderPriceChart() {
   });
   $('kta-changes').textContent = '7d ' + fmt.pct(state.market.change7d) + ' · 30d ' + fmt.pct(state.market.change30d);
 }
+
+/* ---------- theme toggle (light / dark) ---------- */
+$('theme-toggle').addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = next;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', next === 'light' ? '#f2f3f8' : '#1a1b26');
+  try { localStorage.setItem('dashkee.theme', next); } catch {}
+  // re-render open charts so axis/tooltip colors match
+  if (state.lookups || state.storage) refreshPortfolio();
+  if (typeof renderPriceChart === 'function') pollMarket().then(renderPriceChart).catch(() => {});
+});
 
 /* ---------- boot ---------- */
 state.accounts = saved(); // restore watched addresses from localStorage

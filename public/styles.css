@@ -477,3 +477,88 @@ footer { border-top: 1px solid var(--border-soft); padding: 18px 28px; font-size
 .sec-list { margin: 8px 0 4px; padding-left: 18px; line-height: 1.55; color: var(--muted); }
 .sec-list b { color: var(--bright); }
 .sec-list code { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+
+/* ============ collapsible account sections ============ */
+.acc-section {
+  margin: 14px 0; border: 1px solid var(--border-soft); border-radius: var(--radius);
+  background: var(--bg-soft); overflow: hidden;
+}
+.acc-section > summary {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 16px; cursor: pointer; user-select: none;
+  background: linear-gradient(180deg, var(--card), var(--bg-soft));
+  list-style: none;
+}
+.acc-section > summary::-webkit-details-marker { display: none; }
+.acc-section > summary:hover { filter: brightness(1.08); }
+.acc-section > summary .sec-title { font-weight: 700; color: var(--bright); font-size: 14px; }
+.acc-section > summary .chev {
+  margin-left: auto; color: var(--muted); transition: transform 0.18s ease; font-size: 12px;
+}
+.acc-section[open] > summary .chev { transform: rotate(180deg); }
+.acc-section > *:not(summary) { margin-left: 16px; margin-right: 16px; }
+.acc-section > *:last-child { margin-bottom: 14px; }
+.sec-desc { margin-top: 10px; }
+.icon-btn {
+  width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9px; border: 1px solid var(--border); background: var(--bg-soft);
+  color: var(--muted); cursor: pointer; flex-shrink: 0;
+}
+.icon-btn:hover { color: var(--bright); border-color: var(--accent); }
+[data-theme="dark"] .ico-sun { display: block; }
+[data-theme="dark"] .ico-moon { display: none; }
+[data-theme="light"] .ico-sun { display: none; }
+[data-theme="light"] .ico-moon { display: block; }
+
+/* ============ LIGHT THEME ============ */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #eef0f7;
+  --bg-soft: #ffffff;
+  --card: #ffffff;
+  --card-2: #f2f4fa;
+  --border: #d8ddeb;
+  --border-soft: #e4e8f2;
+  --text: #42465e;
+  --bright: #1f2440;
+  --muted: #5a607d;
+  --faint: #8b90a8;
+  --accent: #3d63dd;
+  --green: #3e7d16;
+  --red: #c5303f;
+  --yellow: #9a6c14;
+  --purple: #7c4dc4;
+  --teal: #0b7f95;
+  --orange: #d2622a;
+}
+:root[data-theme="light"] body { background: var(--bg); color: var(--text); }
+:root[data-theme="light"] .topbar { background: rgba(255, 255, 255, 0.88); border-bottom-color: var(--border-soft); }
+:root[data-theme="light"] .modal { background: rgba(31, 36, 64, 0.35); }
+:root[data-theme="light"] .modal-card { box-shadow: 0 24px 70px rgba(31, 36, 64, 0.25); }
+:root[data-theme="light"] .primary-btn { color: #ffffff; }
+:root[data-theme="light"] .card,
+:root[data-theme="light"] .hero,
+:root[data-theme="light"] .topbar { box-shadow: none; }
+:root[data-theme="light"] .card { border: 1px solid var(--border-soft); }
+/* hero gradient tile */
+:root[data-theme="light"] .hero-card {
+  background: linear-gradient(135deg, #f7f8fd, #ffffff 55%, #eef1fa);
+  border: 1px solid var(--border-soft);
+}
+/* colored translucent chips keep their accent but get stronger text */
+:root[data-theme="light"] .tag { border: 1px solid rgba(0, 0, 0, 0.06); }
+:root[data-theme="light"] .sv-bg { background: rgba(62, 125, 22, 0.12); color: var(--green); }
+:root[data-theme="light"] .tag-savings { background: rgba(62, 125, 22, 0.1); color: var(--green); }
+:root[data-theme="light"] .account-card.savings {
+  border-left: 3px solid var(--green);
+  background: linear-gradient(180deg, rgba(62, 125, 22, 0.06), transparent 42%), var(--card);
+}
+:root[data-theme="light"] .account-card.bank-card {
+  border-left: 3px solid var(--purple);
+  background: linear-gradient(180deg, rgba(124, 77, 196, 0.06), transparent 42%), var(--card);
+}
+:root[data-theme="light"] .bank-bg { background: rgba(124, 77, 196, 0.12); color: var(--purple); }
+:root[data-theme="light"] .kta-bg { background: rgba(61, 99, 221, 0.12); color: var(--accent); }
+:root[data-theme="light"] .net-pill { border-color: var(--border); }
+:root[data-theme="light"] .bank-table td { border-bottom-color: var(--border-soft); }
+:root[data-theme="light"] .toast { box-shadow: 0 10px 30px rgba(31, 36, 64, 0.25); }
