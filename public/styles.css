@@ -380,8 +380,7 @@ footer { border-top: 1px solid var(--border-soft); padding: 18px 28px; font-size
   .brand-sub { display: none; }
   .top-actions { margin-left: auto; }
   .hero-top { flex-wrap: wrap; }
-  .hero-value { font-size: 28px; }
-  .hero-chips { gap: 6px; }
+  .hero-value { font-size: 28px; }  .hero-chips { gap: 6px; }
   .card { padding: 12px; border-radius: 10px; }
   .page-head h1 { font-size: 19px; }
   .tabs button { padding: 10px 13px; font-size: 12.5px; }
@@ -417,3 +416,25 @@ footer { border-top: 1px solid var(--border-soft); padding: 18px 28px; font-size
   border-radius: 8px; padding: 8px 12px;
 }
 .sentto-item .mono { flex: 1; min-width: 200px; }
+
+/* ============ iOS zoom + overflow fixes ============ */
+/* iOS Safari auto-zooms the page when a focused input's font-size < 16px.
+   That is the "page enlarges out of screen" bug on connect — keep inputs at 16px. */
+.method-card textarea, .method-card input[type="password"],
+.watch-input, .pl-range input, .pl-range select {
+  font-size: 16px;
+}
+@media (max-width: 640px) {
+  .method-card textarea, .method-card input[type="password"],
+  .pl-range input, .pl-range select, #hpl-from, #hpl-to {
+    font-size: 16px !important;
+  }
+  /* long hex addresses must never force horizontal page scroll */
+  .mono, .addr, .sub, .sentto-item, .empty-storage-item, .seed-item {
+    overflow-wrap: anywhere;
+    word-break: break-all;
+  }
+  .modal-card {
+    max-height: 92vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
+}

@@ -980,6 +980,7 @@ async function renderPriceChart() {
 }
 
 /* ---------- boot ---------- */
+state.accounts = saved(); // restore watched addresses from localStorage
 pollMarket();
 refreshPortfolio();
 setInterval(pollMarket, 60_000);

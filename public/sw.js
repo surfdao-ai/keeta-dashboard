@@ -1,7 +1,8 @@
 /* DashKee service worker — offline-capable shell + last-good API data.
-   Static shell: cache-first. API: network-first with cache fallback so the
-   dashboard still opens (with the last successful data) when offline. */
-const VERSION = 'dashkee-v1';
+   Navigation & static: stale-while-revalidate (fresh on second load),
+   API: network-first with cache fallback so the dashboard still opens
+   (with the last successful data) when offline. */
+const VERSION = 'dashkee-v2';
 const SHELL = [
   '/',
   '/app.js',
@@ -55,17 +56,18 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // static shell: cache-first
+  // static shell: stale-while-revalidate — instant from cache, refresh in
+  // the background so deploys propagate on the next load
   e.respondWith(
-    caches.match(req).then((hit) =>
-      hit ??
-      fetch(req).then((res) => {
-        if (res.ok && (req.destination === '' || url.pathname.startsWith('/'))) {
+    caches.match(req).then((hit) => {
+      const refresh = fetch(req).then((res) => {
+        if (res.ok) {
           const clone = res.clone();
           caches.open(VERSION).then((c) => c.put(req, clone));
         }
         return res;
-      }).catch(() => caches.match('/'))
-    )
+      }).catch(() => hit);
+      return hit ?? refresh;
+    })
   );
 });
