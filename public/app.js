@@ -294,7 +294,6 @@ function renderBanking() {
     : (relevant.length ? `${relevant.length} locked (KYC needed)` : '');
   if (!relevant.length) { sec.classList.add('hidden'); return; }
   sec.classList.remove('hidden');
-  if (verifiedCount && !sec.dataset.opened) { sec.open = true; sec.dataset.opened = '1'; } // auto-open once
   $('bank-list').innerHTML = relevant.map((acc) => {
     const id = acc.identity;
     const verified = id?.verified;
@@ -677,7 +676,6 @@ function renderAccounts() {
   const sentSec = $('sentto-section');
   if (sentTo.length) {
     sentSec.classList.remove('hidden');
-    if (!sentSec.dataset.opened) { sentSec.open = true; sentSec.dataset.opened = '1'; } // auto-open once, then respect the user
     $('sentto-count').textContent = `${sentTo.length} destination${sentTo.length !== 1 ? 's' : ''}`;
     $('sentto-list').innerHTML = sentTo.map((d) => {
       const watched = state.accounts.some((a) => a.address === d.address);
