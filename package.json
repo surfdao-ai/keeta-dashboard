@@ -12,6 +12,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@keetanetwork/anchor": "^0.0.108",
     "@keetanetwork/keetanet-client": "^0.19.1",
     "echarts": "^6.1.0",
     "express": "^5.3.0"

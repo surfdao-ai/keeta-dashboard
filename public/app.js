@@ -54,6 +54,106 @@ async function getJSON(url, opts) {
   return res.json();
 }
 
+/* ================= banking (KYC → checking account) ================= */
+/* Bank account numbers/routing numbers are NOT on-chain — they live with
+   fiat anchors (e.g. Bridge, Keeta Personal). Fetching them requires
+   signing anchor API requests with the account's key, so this runs
+   entirely in the browser: the seed is typed per-fetch, kept in memory
+   for this call only, never stored and never sent to DashKee's server. */
+const USDC_TOKEN = 'keeta_amnkge74xitii5dsobstldatv3irmyimujfjotftx7plaaaseam4bntb7wnna';
+const US_BANK = { type: 'bank-account', account: { type: 'us' } };
+
+async function deriveSignerFor(address, seedHex, maxIndex = 100) {
+  for (let i = 0; i <= maxIndex; i++) {
+    const a = KeetaNet.lib.Account.fromSeed(seedHex, i);
+    if (a.publicKeyString.get() === address) return a;
+  }
+  throw new Error('That seed does not derive this address (checked indices 0–' + maxIndex + ')');
+}
+
+async function fetchBankAccount(address, seedHex, onStatus) {
+  if (typeof KeetaAnchor === 'undefined') throw new Error('Banking module is still loading — try again in a moment');
+  const signer = await deriveSignerFor(address, seedHex);
+  onStatus('Connecting to mainnet…');
+  const uc = KeetaNet.UserClient.fromNetwork('main', signer);
+  try {
+    const amc = new KeetaAnchor.AssetMovement.Client(uc);
+    const toKeeta = { type: 'chain', chain: { type: 'keeta', networkId: uc.network } };
+    const search = {
+      asset: { from: 'USD', to: KeetaNet.lib.Account.fromPublicKeyString(USDC_TOKEN) },
+      from: US_BANK,
+      to: toKeeta,
+    };
+    onStatus('Finding fiat anchors…');
+    const providers = await amc.getProvidersForTransfer(search);
+    if (!providers || !providers.length) throw new Error('No USD fiat anchor found on mainnet');
+    const provider = providers.find((p) => p.providerID === 'bridge') ?? providers[0];
+
+    onStatus('Looking up existing bank accounts…');
+    const listed = await provider.listForwardingAddresses({ account: signer, search: [{ asset: search.asset, sourceLocation: US_BANK }] }).catch(() => null);
+    if (listed && listed.addresses && listed.addresses.length) {
+      return { provider: provider.providerID, accounts: listed.addresses, existing: true };
+    }
+
+    const createReq = {
+      account: signer,
+      sourceLocation: US_BANK,
+      asset: search.asset,
+      destinationLocation: toKeeta,
+      destinationAddress: address,
+    };
+    onStatus('Requesting a checking account from ' + provider.providerID + '…');
+    let created;
+    try {
+      created = await provider.createPersistentForwardingAddress(createReq);
+    } catch (e) {
+      const name = e.name || e.constructor?.name || '';
+      if (/KYCShareNeeded|NotOnboarded|KYCPendingReview/i.test(name)) {
+        onStatus('Sharing your KYC certificate with ' + provider.providerID + ' (encrypted, signed locally)…');
+        await shareKYCWithProvider(provider, signer, address, e);
+        onStatus('Retrying…');
+        created = await provider.createPersistentForwardingAddress(createReq);
+      } else {
+        throw e;
+      }
+    }
+    return { provider: provider.providerID, accounts: [created], existing: false };
+  } finally {
+    uc.destroy();
+  }
+}
+
+async function shareKYCWithProvider(provider, signer, address, originalError) {
+  // read the leaf certificate from chain and build an encrypted shareable
+  // container locally — the anchor receives a commitment, not raw PII
+  const uc = KeetaNet.UserClient.fromNetwork('main', signer);
+  try {
+    const certs = await uc.client.getAllCertificates(signer);
+    const leafEntry = (certs || []).find((e) => {
+      const sp = e.certificate?.subjectPublicKey;
+      const spAddr = typeof sp === 'string' ? sp : (sp?.publicKeyString?.get?.() ?? null);
+      return spAddr === address;
+    });
+    if (!leafEntry) {
+      throw new Error('This account has no KYC certificate on-chain yet — complete identity verification in the Keeta app first'
+        + (originalError && /PendingReview/i.test(originalError.name || '') ? ' (your earlier verification is still under review)' : ''));
+    }
+    const cert = new KeetaAnchor.lib.Certificates.Certificate(leafEntry.certificate.toPEM(), { subjectKey: signer });
+    const bundle = leafEntry.intermediates
+      ? new KeetaAnchor.KeetaNet.lib.Utils.Certificate.CertificateBundle([...leafEntry.intermediates])
+      : null;
+    const sharable = await KeetaAnchor.lib.Certificates.SharableCertificateAttributes.fromCertificate(cert, bundle ?? undefined);
+    const share = await provider.shareKYCAttributes({ account: signer, attributes: sharable });
+    if (share?.promiseURL) {
+      onStatus('Anchor is reviewing the shared identity…');
+      await provider.awaitPromiseURL(share.promiseURL, {}).catch(() => {});
+    }
+    return share;
+  } finally {
+    uc.destroy();
+  }
+}
+
 function toast(msg, ms = 2800) {
   const t = $('toast');
   t.textContent = msg;
@@ -175,6 +275,106 @@ $('seed-save').onclick = () => {
   toast('Saved ' + picked.length + ' account' + (picked.length > 1 ? 's' : ''));
   refreshPortfolio();
 };
+
+/* ---------- banking cards ---------- */
+function maskAccount(n) {
+  const s = String(n || '');
+  if (s.length <= 4) return '••••';
+  return '•••• •••• ' + s.slice(-4);
+}
+
+function renderBanking() {
+  const wallet = state.lookups?.accounts || [];
+  const relevant = wallet.filter((a) => !a.isToken);
+  const sec = $('bank-section');
+  if (!relevant.length) { sec.classList.add('hidden'); return; }
+  sec.classList.remove('hidden');
+  $('bank-list').innerHTML = relevant.map((acc) => {
+    const id = acc.identity;
+    const verified = id?.verified;
+    const cached = bankCache[acc.address];
+    let body;
+    if (verified) {
+      body = cached
+        ? cached.error
+          ? `<div class="bank-err">⚠ ${cached.error}</div>`
+          : cached.accounts.map((row) => bankRowHtml(row, cached.provider)).join('')
+        : `<div class="muted small bank-note">Account &amp; routing numbers live with fiat anchors, not on-chain. Fetching signs the anchor request <b>in your browser</b> — paste your seed below; it stays in this tab only, never sent or stored.</div>
+           <div class="bank-fetch-row">
+             <input type="password" id="bankseed-${acc.address}" class="bank-seed" placeholder="64-char hex seed (this tab only)" autocomplete="off" />
+             <button class="primary-btn bank-fetch-btn" data-bankfetch="${acc.address}">Get bank details</button>
+           </div>
+           <div class="bank-status muted small hidden" id="bankstatus-${acc.address}"></div>`;
+    } else {
+      body = `<div class="bank-locked muted small">🔒 <b>Identity verification required.</b> Complete KYC once (e.g. Footprint or Keeta Personal in the Keeta app) and this account gets a checking account — a real <b>account number &amp; routing number</b> for USD deposits, minted straight to your Keeta address as USDC. DashKee shows the KYC badge automatically once the certificate is on-chain.</div>`;
+    }
+    return `<div class="account-card bank-card">
+      <div class="acc-head">
+        <span class="asset-ico bank-bg">🏦</span>
+        <div class="acc-name">
+          <div>Checking account ${verified ? '<span class="tag tag-owner">KYC ✓</span>' : '<span class="tag tag-managed">NO KYC</span>'}</div>
+          <div class="muted small">${verified ? ((id.issuers || []).join(' · ') || 'verified identity') + (id.validUntil ? ' · valid to ' + new Date(id.validUntil).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : '') : 'no identity certificates on-chain for this account'}</div>
+        </div>
+        <span class="muted small mono">${fmt.short(acc.address, 10, 5)}</span>
+      </div>
+      ${body}
+      <div class="acc-foot muted small">Banking by fiat anchors (Bridge, Keeta Personal…) on the Keeta mainnet · USD → USDC</div>
+    </div>`;
+  }).join('');
+
+  document.querySelectorAll('[data-bankfetch]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const addr = btn.dataset.bankfetch;
+      const seedEl = document.getElementById('bankseed-' + addr);
+      const statusEl = document.getElementById('bankstatus-' + addr);
+      const seedHex = (seedEl?.value || '').trim().replace(/\s+/g, '');
+      if (!/^[0-9a-fA-F]{64}$/.test(seedHex)) return toast('Paste the 64-char hex seed for this account');
+      btn.disabled = true; btn.textContent = 'Working…';
+      statusEl.classList.remove('hidden');
+      const onStatus = (m) => { statusEl.textContent = m; };
+      try {
+        const result = await fetchBankAccount(addr, seedHex, onStatus);
+        bankCache[addr] = result;
+        toast('Bank details fetched');
+      } catch (e) {
+        bankCache[addr] = { error: e.message };
+      } finally {
+        btn.disabled = false; btn.textContent = 'Get bank details';
+        seedEl.value = '';
+        renderBanking();
+      }
+    });
+  });
+}
+
+function bankRowHtml(row, provider) {
+  const a = row?.address ?? row ?? {};
+  if (a.obfuscated) {
+    return `<div class="bank-row"><div><div class="mini-name">${a.bankName || provider || 'Bank account'}</div><div class="muted small">details held privately by the anchor — visible in the provider app</div></div><span class="tag tag-info">PRIVATE</span></div>`;
+  }
+  const kind = a.accountTypeDetail ? a.accountTypeDetail.toUpperCase() : 'BANK';
+  const fields = [];
+  if (a.accountNumber) fields.push(['Account number', a.accountNumber, true]);
+  if (a.routingNumber) fields.push(['Routing number', a.routingNumber, false]);
+  if (a.iban) fields.push(['IBAN', a.iban, false]);
+  if (a.accountNumberText && !a.accountNumber) fields.push(['Account', a.accountNumberText, true]);
+  if (!fields.length) {
+    return `<div class="bank-row"><div><div class="mini-name">${a.bankName || provider || 'Bank account'}</div><div class="muted small">forwarding address ready — deposit details appear with the first transfer</div></div></div>`;
+  }
+  return `<div class="bank-row">
+    <div class="bank-fields">
+      ${fields.map(([label, val, maskable]) => `
+        <div class="bank-field">
+          <div class="muted small">${label}</div>
+          <div class="mono bank-val" data-full="${val}">${maskable ? maskAccount(val) : val}</div>
+          ${maskable ? `<button class="mini-btn bank-reveal" data-reveal>${'show'}</button>` : ''}
+        </div>`).join('')}
+    </div>
+    <div class="bank-meta muted small">${a.bankName ? a.bankName + ' · ' : ''}${provider || ''} · ${kind}</div>
+  </div>`;
+}
+
+const bankCache = {};
 
 /* ---------- charts ---------- */
 const charts = {};
@@ -358,11 +558,15 @@ function renderAccounts() {
 
   $('account-list').innerHTML = wallet.map((acc, i) => {
     const bals = (acc.balances || []).filter((b) => b.amount !== 0);
+    const id = acc.identity;
+    const idLine = id?.verified
+      ? `<div class="id-line ok">🛡 KYC verified${id.issuers.length ? ' · ' + id.issuers[0] + (id.issuers.length > 1 ? ` +${id.issuers.length - 1}` : '') : ''}${id.validUntil ? ' · valid to ' + new Date(id.validUntil).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : ''}</div>`
+      : '<div class="id-line muted small">No identity certificates on-chain</div>';
     return `<div class="account-card">
       <div class="acc-head">
         <span class="asset-ico kta-bg">${(acc.name || labelFor(acc.address, i)).slice(0, 1)}</span>
         <div class="acc-name">
-          <div>${acc.name || labelFor(acc.address, i)}${acc.username ? ` <span class="tag tag-owner">@${acc.username}</span>` : ''}</div>
+          <div>${acc.name || labelFor(acc.address, i)}${acc.username ? ` <span class="tag tag-owner">@${acc.username}</span>` : ''} <span class="tag ${acc.isStorage ? 'tag-savings' : 'tag-info'}">${acc.isStorage ? 'STORAGE VAULT' : 'WALLET'}</span></div>
           <div class="muted small mono">${acc.type} · ${fmt.short(acc.address, 12, 6)}</div>
         </div>
         <button class="x-btn" title="Remove" data-remove="${acc.address}">✕</button>
@@ -371,6 +575,7 @@ function renderAccounts() {
       <div class="acc-bals">
         ${bals.map((b) => `<span class="chip-item">${assetIcon(b, 'asset-ico sm')} ${fmt.compact(b.amount, 4)} ${b.name || ''}</span>`).join('') || '<span class="muted small">empty account</span>'}
       </div>
+      ${idLine}
       <div class="acc-foot muted small">Height ${acc.headHeight != null ? BigInt('0x' + String(acc.headHeight).replace('0x', '')).toString(10) : '—'} · <a href="https://explorer.keeta.com/account/${acc.address}" target="_blank" rel="noopener">explorer ↗</a></div>
     </div>`;
   }).join('') || '<div class="muted card-pad">No wallet accounts connected yet.</div>';
@@ -461,6 +666,8 @@ function renderAccounts() {
   } else {
     sentSec.classList.add('hidden');
   }
+
+  renderBanking();
 
   document.querySelectorAll('[data-remove]').forEach((b) =>
     b.addEventListener('click', () => {

@@ -498,6 +498,58 @@ export async function marketData() {
 /* ---------------- portfolio lookup ---------------- */
 const MAX_ADDRESSES = 60;
 
+/* ---------------- identity certificates (KYC/KYB) ---------------- */
+/* Certificates are on-chain X.509-style assertions: an issuer (e.g. a KYC
+   anchor) attests attributes about the account. Public fields (issuer,
+   validity window) are readable by anyone — this powers the read-only
+   "identity verified" display. Sensitive attributes (name, DOB…) are
+   encrypted and can only be decrypted client-side with the subject's key. */
+const CERT_TTL = 10 * 60_000;
+const certCache = new Map();
+
+const prettyDN = (dn) => {
+  const m = /(?:^|[,\s])(?:commonName|organizationName)=([^,]+)/.exec(dn || '');
+  return m ? m[1].trim() : (dn || null);
+};
+
+export async function identityFor(address) {
+  const hit = certCache.get(address);
+  if (hit && Date.now() - hit.at < CERT_TTL) return hit.data;
+  const { client } = state();
+  const certs = await withTimeout(
+    client.getAllCertificates(KeetaNet.lib.Account.fromPublicKeyString(address)).then(S),
+    15000, 'certificates'
+  ).catch(() => []);
+  const now = Date.now();
+  const entries = (certs || []).map((c) => {
+    const cert = c?.certificate ?? c ?? {};
+    return {
+      issuer: cert.issuer ?? null,
+      issuerName: prettyDN(cert.issuer),
+      subjectAddress: typeof cert.subjectPublicKey === 'string' ? cert.subjectPublicKey : (cert.subjectPublicKey ?? null),
+      notBefore: cert.notBefore ?? null,
+      notAfter: cert.notAfter ?? null,
+      serial: cert.serial ?? null,
+    };
+  });
+  // leaf certificates are the ones whose subject IS this account; the rest
+  // are intermediates forming the chain of authority
+  const leaf = entries.filter((e) => e.subjectAddress === address);
+  const active = leaf.filter((e) =>
+    e.notAfter && new Date(e.notAfter).getTime() > now &&
+    (!e.notBefore || new Date(e.notBefore).getTime() <= now));
+  const data = {
+    verified: active.length > 0,
+    issuers: [...new Set(active.map((e) => e.issuerName).filter(Boolean))],
+    validUntil: active.length ? active.map((e) => e.notAfter).sort().pop() : null,
+    leafCount: leaf.length,
+    intermediates: entries.length - leaf.length,
+    certificates: entries.map(({ subjectAddress, ...rest }) => rest),
+  };
+  certCache.set(address, { at: Date.now(), data });
+  return data;
+}
+
 export async function lookupAddresses(addresses) {
   const uniq = [...new Set(addresses.filter(isAddress))].slice(0, MAX_ADDRESSES);
   const { client } = state();
@@ -506,6 +558,7 @@ export async function lookupAddresses(addresses) {
     const keyType = acct.keyType;
     const type = KeetaNet.lib.Account.AccountKeyAlgorithm[keyType] ?? String(keyType);
     const username = await ksUsername(address).catch(() => null);
+    const identity = await identityFor(address).catch(() => null);
 
     const [infoRes, balancesRes] = await Promise.all([
       withTimeout(client.getAccountInfo(acct), 15000, 'account info')
@@ -540,6 +593,7 @@ export async function lookupAddresses(addresses) {
       keyType,
       type,
       username,
+      identity,
       isToken: type === 'TOKEN',
       isStorage: type === 'STORAGE',
       exists,

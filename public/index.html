@@ -134,7 +134,7 @@
     </div>
     <div class="sub-head"><h2>Wallet accounts</h2><span class="muted small" id="wallet-count"></span></div>
     <div id="account-list" class="account-grid"></div>
-    <div class="sub-head"><h2>Savings vaults</h2><span class="muted small">storage accounts that hold assets, discovered via on-chain access-control lists</span></div>
+    <div class="sub-head"><h2>Savings vaults</h2><span class="muted small">storage accounts (keyType 4) that hold assets, discovered via on-chain access-control lists</span></div>
     <div class="storage-note">
       <span class="icon">💡</span>
       <span><b>Why do I see storage accounts I never opened?</b> An ACL entry only means your account has been <i>granted a permission</i> on that storage account — not that you created it. Token issuers and anchors (e.g. the USD/EUR stablecoins) create storage accounts to hold your token balances and grant your account access. DashKee checks the OWNER flag of each one, so you can see exactly which are yours.</span>
@@ -147,6 +147,11 @@
     <div id="sentto-section" class="hidden">
       <div class="sub-head"><h2>Accounts you've sent to</h2><span class="muted small">destination accounts with no access-grant link — some may be deposit/parking accounts holding your assets</span></div>
       <div id="sentto-list" class="sentto-list"></div>
+    </div>
+
+    <div id="bank-section" class="hidden">
+      <div class="sub-head"><h2>Banking</h2><span class="muted small">KYC-verified accounts get a checking account via fiat anchors (Bridge, Keeta Personal) — account &amp; routing numbers for USD deposits</span></div>
+      <div id="bank-list" class="account-grid"></div>
     </div>
   </section>
 
@@ -266,8 +271,9 @@
 </footer>
 
 <div id="toast" class="toast hidden"></div>
-<script src="/vendor/echarts.min.js"></script>
-<script src="/vendor/keetanet-browser.js"></script>
-<script src="/app.js"></script>
+<script src="/vendor/echarts.min.js" defer></script>
+<script src="/vendor/keetanet-browser.js" defer></script>
+<script src="/vendor/keeta-anchor.js" defer></script>
+<script src="/app.js" defer></script>
 </body>
 </html>

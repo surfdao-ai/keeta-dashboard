@@ -438,3 +438,29 @@ footer { border-top: 1px solid var(--border-soft); padding: 18px 28px; font-size
     max-height: 92vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
 }
+
+/* ============ identity + banking ============ */
+.id-line { font-size: 12.5px; margin-top: 8px; }
+.id-line.ok { color: var(--green); font-weight: 600; }
+.bank-bg { background: rgba(187, 154, 247, 0.18); color: var(--purple, #bb9af7); }
+.account-card.bank-card {
+  border-left: 3px solid #bb9af7;
+  background: linear-gradient(180deg, rgba(187,154,247,0.05), transparent 42%), var(--card);
+}
+.bank-note { margin: 10px 0 8px; line-height: 1.5; }
+.bank-fetch-row { display: flex; gap: 8px; align-items: stretch; }
+.bank-seed {
+  flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 9px;
+  padding: 10px 12px; font-family: var(--mono); font-size: 16px; outline: none;
+  background: var(--bg); color: var(--bright);
+}
+.bank-seed:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(122, 162, 247, 0.2); }
+.bank-fetch-btn { white-space: nowrap; }
+.bank-status { margin-top: 8px; }
+.bank-err { color: var(--red, #f7768e); font-size: 13px; margin: 8px 0; line-height: 1.45; }
+.bank-row { margin: 10px 0; padding: 10px 12px; background: var(--bg-soft); border: 1px solid var(--border-soft); border-radius: 9px; }
+.bank-fields { display: flex; gap: 22px; flex-wrap: wrap; }
+.bank-field .bank-val { font-size: 15px; margin-top: 2px; }
+.bank-reveal { margin-left: 8px; }
+.bank-meta { margin-top: 8px; }
+.bank-locked { margin: 10px 0 4px; line-height: 1.55; padding: 10px 12px; background: var(--bg-soft); border: 1px dashed var(--border-soft); border-radius: 9px; }

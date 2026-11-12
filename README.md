@@ -58,6 +58,20 @@ up as profit or loss.
   and EUR token (live ECB reference rate via Frankfurter)
 - **Activity** — merged, sorted chain history across all accounts with
   Sent/Received amounts and operation labels
+- **Identity (KYC)** — every watched account is checked for on-chain
+  identity certificates (`getAllCertificates`): a green "KYC verified"
+  line shows the issuing anchors (e.g. Footprint KYC, Keeta Personal)
+  and the validity window. Sensitive attributes (name, DOB…) are
+  encrypted on-chain and are never displayed.
+- **Banking** — for KYC-verified accounts, DashKee can fetch the
+  fiat-anchor checking account (US account & routing numbers for USD→USDC
+  deposits, via e.g. Bridge or Keeta Personal). This runs **entirely in
+  the browser**: the anchor API requires the account's signature, so the
+  seed is typed per fetch, held in memory for the duration of the call,
+  never stored and never sent to DashKee's server. If the account hasn't
+  shared its KYC with the anchor yet, DashKee does the encrypted
+  attribute share locally (the anchor only receives a commitment, not
+  the raw PII).
 
 **Network tab** (kept from the explorer build): live TPS, settlement-time
 histogram with median/p90, voting-power donut, KTA 7-day price chart,
@@ -69,6 +83,8 @@ representatives, and a recent-blocks feed.
 - Seed input is processed **client-side only** with the official SDK
   (self-hosted `keetanet-browser.js`); only derived public addresses
   are transmitted, and nothing is stored server-side
+- **Banking goes further**: the seed is never even *kept* for the
+  session — it is used for a single anchor request and discarded
 - Watched addresses and derived addresses are saved in `localStorage`
 
 ## Run it
