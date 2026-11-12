@@ -657,16 +657,20 @@ export async function activityFor(addresses, depth = 12) {
 }
 
 /* ---------------- network snapshot ---------------- */
+/* Representatives + weights are cached for 24h — the set churns on every
+   live poll, which makes the table noisy without adding real information. */
 export async function networkSnapshot() {
   const { client } = state();
-  const [status, reps, version, supply] = await Promise.all([
+  const [status, version, supply] = await Promise.all([
     withTimeout(client.getNetworkStatus(8000), 12000, 'network status'),
-    withTimeout(client.getAllRepresentativeInfo(), 10000, 'representatives'),
     cached('version', 60_000, () => withTimeout(client.getVersion(), 8000, 'version')),
     cached('supply', 300_000, () => withTimeout(client.getTokenSupply(state().uc.baseToken), 10000, 'supply')),
   ]);
+  const repsRaw = await cached('reps:daily', 24 * 3_600_000, () =>
+    withTimeout(client.getAllRepresentativeInfo(), 10000, 'representatives')
+  ).catch(() => []);
 
-  const repWeights = S(reps);
+  const repWeights = S(repsRaw);
   const totalWeight = repWeights.reduce((a, r) => a + BigInt(r.weight || 0), 0n);
   const statusJ = S(status);
   const ledgers = (Array.isArray(statusJ) ? statusJ : [])
@@ -694,6 +698,8 @@ export async function networkSnapshot() {
     fetchedAt: Date.now(),
     ledgers,
     reps: repWeights.map((r) => ({ ...r, share: totalWeight > 0n ? Number(BigInt(r.weight) * 10000n / totalWeight) / 100 : null })),
+    repsAsOf: Date.now(),
+    repsTtlHours: 24,
     totalWeight: totalWeight.toString(),
     version: version?.node ?? version ?? null,
     peers,

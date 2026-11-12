@@ -881,6 +881,12 @@ function renderSettlement(st) {
 const REP_COLORS = ['#7aa2f7', '#0db9d7', '#bb9af7', '#9ece6a', '#e0af68', '#f7768e'];
 function renderReps(net) {
   const reps = net.reps || [];
+  if (net.repsAsOf) {
+    const ageH = (Date.now() - net.repsAsOf) / 3_600_000;
+    $('reps-asof').textContent = ageH < 1
+      ? 'daily snapshot, just updated'
+      : `daily snapshot, ${Math.floor(ageH)}h old`;
+  }
   chart('chart-reps').setOption({
     tooltip: { ...tooltipCommon, formatter: (p) => `${p.data.full}<br/>${(p.data.share ?? 0).toFixed(2)}%` },
     series: [{
