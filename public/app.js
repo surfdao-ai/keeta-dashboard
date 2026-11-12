@@ -288,6 +288,14 @@ function renderOverview() {
   $('total-usd').textContent = fmt.usd(total);
   $('total-sub').textContent = `across ${accounts.length} account${accounts.length !== 1 ? 's' : ''} · ${assets.length} asset${assets.length !== 1 ? 's' : ''}`;
   $('kta-price-line').textContent = state.market ? `${fmt.usdAuto(state.market.price)} · ${fmt.pct(state.market.change24h)} 24h` : '—';
+  const dex = state.market?.dex;
+  if (dex?.priceUsd != null) {
+    $('dex-line').classList.remove('hidden');
+    $('dex-price-line').textContent = `${fmt.usdAuto(dex.priceUsd)} · ${fmt.pct(dex.change24hPct)} 24h (Base pool)`;
+    if (state.market.price != null && Math.abs(dex.priceUsd - state.market.price) / state.market.price > 0.02) {
+      $('dex-price-line').textContent += ' · ⚠ marks disagree >2%';
+    }
+  }
 
   const chips = [];
   if (kta) chips.push(`<span class="chip-item">${kta.name || 'KTA'} ${fmt.compact(kta.amount, 4)}</span>`);
@@ -350,7 +358,7 @@ function renderAccounts() {
       <div class="acc-head">
         <span class="asset-ico kta-bg">${(acc.name || labelFor(acc.address, i)).slice(0, 1)}</span>
         <div class="acc-name">
-          <div>${acc.name || labelFor(acc.address, i)}</div>
+          <div>${acc.name || labelFor(acc.address, i)}${acc.username ? ` <span class="tag tag-owner">@${acc.username}</span>` : ''}</div>
           <div class="muted small mono">${acc.type} · ${fmt.short(acc.address, 12, 6)}</div>
         </div>
         <button class="x-btn" title="Remove" data-remove="${acc.address}">✕</button>
@@ -431,7 +439,7 @@ function renderAssets() {
   $('assets-body').innerHTML = assets.map((a, i) => {
     const share = a.value != null && total > 0 ? (a.value / total) * 100 : null;
     return `<tr>
-      <td><div class="asset-cell">${assetIcon(a)}<div><div class="mini-name">${a.name || 'Unknown token'}</div><div class="muted small mono">${fmt.short(a.address, 12, 6)}</div></div></div></td>
+      <td><div class="asset-cell">${assetIcon(a)}<div><div class="mini-name">${a.name || 'Unknown token'}${a.kind ? ` <span class="muted small">(${a.kind === 'stablecoin' ? 'stablecoin peg' : a.kind === 'fiat-token' ? 'fiat peg' : ''}${a.kind === 'stablecoin' || a.kind === 'fiat-token' ? ', unverified reserves' : ''})</span>` : ''}</div><div class="muted small mono">${fmt.short(a.address, 12, 6)}</div></div></div></td>
       <td>${a.price != null ? fmt.usdAuto(a.price) : '<span class="muted">—</span>'}</td>
       <td>${fmt.compact(a.amount, Math.abs(a.amount) < 1 ? 6 : 4)}</td>
       <td class="strong">${a.value != null ? fmt.usdAuto(a.value) : '<span class="muted">—</span>'}</td>

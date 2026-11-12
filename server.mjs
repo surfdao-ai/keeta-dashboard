@@ -74,7 +74,11 @@ const METADATA_TTL = 5 * 60_000;
 
 async function tokenMeta(tokenAddr) {
   return cached('tok:' + tokenAddr, METADATA_TTL, async () => {
-    const info = await withTimeout(client.getAccountInfo(KeetaNet.lib.Account.fromPublicKeyString(tokenAddr)), 12000, 'token info');
+    const reg = await tokenRegistry().catch(() => null);
+    const regEntry = reg?.get(tokenAddr) ?? null;
+    const info = await withTimeout(client.getAccountInfo(KeetaNet.lib.Account.fromPublicKeyString(tokenAddr)), 12000, 'token info')
+      .then((i) => S(i))
+      .catch(() => null);
     const meta = S(info?.info?.metadata ?? null);
     let decimals = null, logo = null;
     if (meta) {
@@ -87,9 +91,12 @@ async function tokenMeta(tokenAddr) {
     }
     return {
       address: tokenAddr,
-      name: info?.info?.name ?? null,
+      name: info?.info?.name ?? regEntry?.name ?? null,
       description: info?.info?.description ?? null,
-      decimals,
+      code: regEntry?.code ?? null,
+      kind: regEntry?.kind ?? null,
+      issuer: regEntry?.issuer ?? null,
+      decimals: decimals ?? regEntry?.decimals ?? null,
       logo,
       supply: info?.info?.supply != null ? String(info.info.supply) : null,
     };
@@ -105,14 +112,120 @@ async function eurUsd() {
   });
 }
 
+/* ---------------- KeeSpecs (keespecs.xyz) free reads ---------------- */
+const KS = 'https://keespecs.xyz';
+
+async function ksPrice() {
+  return cached('ks:price', 60_000, async () => {
+    const res = await fetch(`${KS}/api/price`);
+    if (!res.ok) throw new Error('keespecs price ' + res.status);
+    const j = await res.json();
+    return { priceUsd: j.priceUsd ?? null, change1hPct: j.change1hPct ?? null, change24hPct: j.change24hPct ?? null, source: 'keespecs/dexscreener (Base pool)', asOf: j.asOf ?? null };
+  });
+}
+
+async function ksStablecoins() {
+  return cached('ks:stables', 6 * 3_600_000, async () => {
+    const res = await fetch(`${KS}/api/stablecoins`);
+    if (!res.ok) throw new Error('keespecs stablecoins ' + res.status);
+    const j = await res.json();
+    return (j.coins || []).map((c) => ({ code: c.code, currency: c.currency, token: c.token, name: c.name, decimals: c.decimals, supply: c.supply }));
+  });
+}
+
+async function ksDirectory() {
+  return cached('ks:dir', 6 * 3_600_000, async () => {
+    const res = await fetch(`${KS}/api/directory`);
+    if (!res.ok) throw new Error('keespecs directory ' + res.status);
+    const j = await res.json();
+    return (j.tokens || []).map((t) => ({ code: t.code, name: t.name, token: t.token, decimals: t.decimals, supply: t.supply }));
+  });
+}
+
+async function ksSupply() {
+  return cached('ks:supply', 6 * 3_600_000, async () => {
+    const res = await fetch(`${KS}/api/supply`);
+    if (!res.ok) throw new Error('keespecs supply ' + res.status);
+    const j = await res.json();
+    return (j.assets || []).map((a) => ({ code: a.code, token: a.token, name: a.name, decimals: a.decimals, supply: a.supply }));
+  });
+}
+
+async function ksUsername(address) {
+  return cached('ks:user:' + address, 10 * 60_000, async () => {
+    const res = await fetch(`${KS}/api/username?account=${encodeURIComponent(address)}`);
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j.username || j.global_username || null;
+  });
+}
+
+/* USD value of one unit of a fiat currency (peg rates) */
+const STATIC_USD_FIAT = { AED: 1 / 3.6725 }; // hard peg, not in ECB list
+async function fiatUsdRates() {
+  return cached('fiat', 3_600_000, async () => {
+    const res = await fetch('https://api.frankfurter.dev/v1/latest?base=USD&symbols=EUR,JPY,CNY,GBP,CAD,MXN,HKD');
+    if (!res.ok) throw new Error('frankfurter ' + res.status);
+    const j = await res.json();
+    const inv = {};
+    for (const [cur, rate] of Object.entries(j.rates || {})) inv[cur] = 1 / rate;
+    return { ...inv, ...STATIC_USD_FIAT };
+  });
+}
+
+/* token address → { price source } registry built from KeeSpecs reads */
+async function tokenRegistry() {
+  return cached('ks:registry', 6 * 3_600_000, async () => {
+    const [stables, dir, supply] = await Promise.all([
+      ksStablecoins().catch(() => []),
+      ksDirectory().catch(() => []),
+      ksSupply().catch(() => []),
+    ]);
+    const reg = new Map();
+    const rates = await fiatUsdRates().catch(() => ({}));
+    const fiatCodes = new Set([...Object.keys(rates), 'USD']);
+    for (const s of stables) reg.set(s.token, { code: s.code, currency: s.currency, name: s.name, decimals: s.decimals, kind: 'stablecoin', issuer: 'Bivo (KeeSpecs, unverified reserves)' });
+    for (const t of dir) if (!reg.has(t.token)) {
+      const isFiat = fiatCodes.has(t.code);
+      reg.set(t.token, { code: t.code, currency: isFiat ? t.code : null, name: t.name, decimals: t.decimals, kind: isFiat ? 'fiat-token' : 'asset' });
+    }
+    for (const a of supply) {
+      const cur = reg.get(a.token) || {};
+      reg.set(a.token, { ...cur, code: a.code, name: a.name, decimals: a.decimals, kind: cur.kind ?? 'asset' });
+    }
+    return reg;
+  });
+}
+
 async function priceFor(tokenAddr) {
   if (tokenAddr === KTA) {
     const m = await marketData().catch(() => null);
-    return m?.price ?? null;
+    return m?.price ?? (await ksPrice().catch(() => null))?.priceUsd ?? null;
   }
   if (tokenAddr === USDC_TOKEN) return 1.0; // USD-pegged (USDC-converted)
   if (tokenAddr === EUR_TOKEN) return await eurUsd().catch(() => null);
+  const reg = await tokenRegistry().catch(() => null);
+  const entry = reg?.get(tokenAddr);
+  if (entry) {
+    if (entry.code === 'BTC' || entry.code === 'BTCB' || entry.code?.toUpperCase() === 'CBTC') {
+      const btc = await cgSimple('bitcoin').catch(() => null);
+      return btc;
+    }
+    if (entry.currency && entry.kind !== 'asset') {
+      const rates = await fiatUsdRates().catch(() => null);
+      if (rates?.[entry.currency] != null) return rates[entry.currency];
+    }
+  }
   return null;
+}
+
+async function cgSimple(id) {
+  return cached('cg:' + id, 5 * 60_000, async () => {
+    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`);
+    if (!res.ok) throw new Error('coingecko ' + res.status);
+    const j = await res.json();
+    return j[id]?.usd ?? null;
+  });
 }
 
 /* ---------------- portfolio lookup ---------------- */
@@ -124,6 +237,7 @@ async function lookupAddresses(addresses) {
     const acct = KeetaNet.lib.Account.fromPublicKeyString(address);
     const keyType = acct.keyType;
     const type = KeetaNet.lib.Account.AccountKeyAlgorithm[keyType] ?? String(keyType);
+    const username = await ksUsername(address).catch(() => null);
 
     const [infoRes, balancesRes] = await Promise.all([
       withTimeout(client.getAccountInfo(acct), 15000, 'account info')
@@ -157,6 +271,7 @@ async function lookupAddresses(addresses) {
       address,
       keyType,
       type,
+      username,
       isToken: type === 'TOKEN',
       isStorage: type === 'STORAGE',
       exists,
@@ -345,6 +460,7 @@ async function marketData() {
         sparkline = (c.prices || []).map(([t, p]) => [t, p]);
       }
     } catch { /* optional */ }
+    const dex = await ksPrice().catch(() => null);
     return {
       price: m.current_price?.usd ?? null,
       marketCap: m.market_cap?.usd ?? null,
@@ -360,6 +476,7 @@ async function marketData() {
       total: m.total_supply ?? null,
       max: m.max_supply ?? null,
       rank: j.market_cap_rank ?? null,
+      dex,
       sparkline,
       lastUpdated: m.last_updated ?? null,
     };
@@ -459,6 +576,15 @@ app.get('/api/recent', async (req, res) => {
 app.get('/api/market', async (req, res) => {
   try {
     res.json(await marketData());
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.get('/api/pricing', async (req, res) => {
+  try {
+    const [rates, registry] = await Promise.all([fiatUsdRates(), tokenRegistry()]);
+    res.json({ rates, registry: [...registry.entries()].map(([token, v]) => ({ token, ...v })) });
   } catch (e) {
     res.status(502).json({ error: e.message });
   }

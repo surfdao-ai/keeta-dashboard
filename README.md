@@ -4,6 +4,16 @@ A **read-only personal dashboard** for the Keeta Network in an omarchy-style
 (tokyo-night) dark theme: your accounts, subaccounts, storage accounts, assets
 and stablecoins — live on mainnet, with a network-explorer tab on the side.
 
+## Data sources
+
+- **Keeta mainnet** via `@keetanetwork/keetanet-client` (all account/chain data)
+- **keespecs.xyz** (free reads): DEX pool price for KTA, the nine $KB
+  stablecoins, the token/currency-map directory, cbBTC/KTA/USDC supply, and
+  keeta.xyz username resolution
+- **CoinGecko**: KTA price + 7-day series, BTC price (for cbBTC)
+- **Frankfurter (ECB)**: fiat peg rates (EUR, JPY, CNY, GBP, CAD, MXN, HKD;
+  AED hard-pegged at 3.6725)
+
 ## What it shows
 
 **Personal banking (Overview / Accounts / Assets / Activity):**
@@ -56,15 +66,18 @@ Options: `PORT=8080 npm start` · `KEETA_NETWORK=test npm start`
 ## API
 
 ```
-POST /api/lookup    {addresses}      info, type (standard/token/storage),
-                                     balances + token metadata + prices
-POST /api/owned     {addresses}      storage accounts discovered via ACLs
-POST /api/activity  {addresses}      merged chain history
-GET  /api/network                    reps, status, settlement histogram
-GET  /api/recent                     recent vote-staple blocks feed
-GET  /api/market                     CoinGecko KTA data + 7d series
+POST /api/lookup     {addresses}      info, type (standard/token/storage),
+                                      balances + token metadata + prices + @usernames
+POST /api/owned      {addresses}      storage accounts via ACLs, decoded
+                                      permissions, and true OWNER resolution
+POST /api/activity   {addresses}      merged chain history
+GET  /api/network                     reps, status, settlement histogram
+GET  /api/recent                      recent vote-staple blocks feed
+GET  /api/market                      CoinGecko KTA data + 7d series + DEX mark
+GET  /api/pricing                     fiat peg rates + full token registry
 ```
 
-Pricing: KTA from CoinGecko · USD token pegged $1 (on-chain USDC conversion)
-· EUR token via ECB reference rate · other tokens show balance only.
+Pricing: KTA from CoinGecko (fallback: KeeSpecs DEX pool) · USDC and KBUSD
+pegged $1 · KB stablecoins & fiat tokens at peg via ECB rates (unverified
+reserves) · cbBTC via BTC spot · other tokens show balance only.
 
