@@ -81,3 +81,20 @@ Pricing: KTA from CoinGecko (fallback: KeeSpecs DEX pool) · USDC and KBUSD
 pegged $1 · KB stablecoins & fiat tokens at peg via ECB rates (unverified
 reserves) · cbBTC via BTC spot · other tokens show balance only.
 
+## Deploy (Vercel)
+
+The backend is split into serverless functions under `api/` sharing
+`api/_lib.mjs` (a globalThis-scoped singleton client + caches, so warm
+lambda instances reuse the Keeta connection and caches). `server.mjs` is a
+thin Express wrapper around the same module for local dev — endpoints are
+identical either way.
+
+1. Push to GitHub (auto-deploys on every push once imported)
+2. Import the repo at [vercel.com/new](https://vercel.com/new)
+3. Done — no env vars needed (`KEETA_NETWORK` defaults to main)
+
+Function limits are set in `vercel.json` (`maxDuration: 30s`). First hit
+after a cold start is the slowest (SDK load + P2P connect); warm calls are
+fast thanks to the in-memory caches.
+
+
