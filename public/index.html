@@ -2,8 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#1a1b26" />
+<meta name="description" content="DashKee — read-only personal dashboard for the Keeta Network: accounts, assets, stablecoins, storage and historical P&L." />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="DashKee" />
 <title>DashKee — Your Keeta Dashboard</title>
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 <link rel="stylesheet" href="/styles.css" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2324283b'/%3E%3Cpath d='M10 8v12.5L19 8h4l-7.5 9L23 24h-4.2l-6-6.6V24H10z' fill='%237aa2f7'/%3E%3C/svg%3E" />
 </head>
@@ -179,17 +186,21 @@
         <input type="date" id="hpl-to" class="hidden">
         <button id="hpl-compute" class="mini-btn">Compute P&amp;L</button>
       </div>
-      <div id="hpl-summary" class="pl-stats hidden"></div>
+      <div id="hpl-summary" class="hpl-stats-grid hidden"></div>
       <div id="hpl-chart" class="pl-chart hidden"></div>
-      <div id="hpl-table-wrap" class="hidden"><table class="bank-table hpl-table"><thead><tr><th>Asset</th><th>Price basis</th><th class="right">Start → End balance</th><th class="right">Start → End value</th><th class="right">Net transfers</th></tr></thead><tbody id="hpl-body"></tbody></table></div>
+      <div class="hpl-charts hidden" id="hpl-charts">
+        <div id="hpl-breakdown" class="pl-chart tall"></div>
+        <div id="hpl-donut" class="pl-chart tall"></div>
+      </div>
+      <div id="hpl-table-wrap" class="hidden table-x"><table class="bank-table hpl-table"><thead><tr><th>Asset</th><th>Price basis</th><th class="right">Start → End balance</th><th class="right">Start → End value</th><th class="right">Net transfers</th></tr></thead><tbody id="hpl-body"></tbody></table></div>
       <div class="muted small" id="hpl-note"></div>
     </div>
-    <div class="card">
+    <div class="card"><div class="table-x">
       <table class="bank-table assets-table">
         <thead><tr><th>Asset</th><th>Price</th><th>Balance</th><th>Value</th><th>Allocation</th><th>Held in</th></tr></thead>
         <tbody id="assets-body"></tbody>
       </table>
-    </div>
+    </div></div>
     <div class="stable-note muted small">USD is Keeta's on-chain USDC-converted stablecoin (pegged ≈ $1.00). EUR is priced with the live ECB reference rate. KTA is priced from CoinGecko. Tokens without a known price show balance only.</div>
   </section>
 

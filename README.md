@@ -4,6 +4,11 @@ A **read-only personal dashboard** for the Keeta Network in an omarchy-style
 (tokyo-night) dark theme: your accounts, subaccounts, storage accounts, assets
 and stablecoins — live on mainnet, with a network-explorer tab on the side.
 
+Installable as a **PWA** (manifest + service worker): add it to your phone's
+home screen and it opens standalone with an offline shell, showing the last
+successfully loaded data when the network is down. The layout is responsive
+from phone to desktop.
+
 Portfolio history is built from **local snapshots** (localStorage only — a
 point is recorded each time your portfolio refreshes) and charted on the
 Assets tab with a P/L summary; assets and full history export to CSV.

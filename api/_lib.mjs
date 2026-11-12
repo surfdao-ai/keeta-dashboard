@@ -419,7 +419,7 @@ export async function historicalPL(addresses, fromISO, toISO) {
     from: from.toISOString(), to: to.toISOString(),
     clamped, truncated,
     chainStart: Number.isFinite(chainStart) ? new Date(chainStart).toISOString() : null,
-    points: points.map((p) => ({ t: p.t, total: p.total })),
+    points: points.map((p) => ({ t: p.t, total: p.total, perToken: p.perToken })),
     summary: {
       startTotal: start.total, endTotal: end.total,
       netFlowUsd: netFlow, pnl, pnlPct: start.total > 0 ? (pnl / (start.total + Math.max(0, netFlow))) * 100 : null,

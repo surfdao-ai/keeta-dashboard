@@ -1,0 +1,17 @@
+{
+  "name": "DashKee — Personal Keeta Dashboard",
+  "short_name": "DashKee",
+  "description": "Read-only personal dashboard for the Keeta Network: accounts, assets, stablecoins, storage and historical P&L — live on mainnet.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1a1b26",
+  "theme_color": "#1a1b26",
+  "categories": ["finance"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -600,13 +600,21 @@ function renderHPL(data) {
   const cls = s.pnl > 0 ? 'green' : s.pnl < 0 ? 'red' : '';
   const flowCls = s.netFlowUsd > 0 ? 'green' : s.netFlowUsd < 0 ? 'red' : '';
   const period = `${fmt.date(data.from)} → ${fmt.date(data.to)}`;
+
+  /* stat cards */
+  const stat = (label, val, extra = '', kls = '') =>
+    `<div class="hpl-stat"><div class="muted small">${label}</div><div class="hpl-stat-val ${kls}">${val}</div>${extra ? `<div class="muted small">${extra}</div>` : ''}</div>`;
   $('hpl-summary').classList.remove('hidden');
-  $('hpl-summary').innerHTML = `
-    <span class="pl-big ${cls}">${s.pnl >= 0 ? '+' : '−'}${fmt.usdAuto(Math.abs(s.pnl))}</span>
-    <span class="pl-chg ${cls}">P&amp;L${s.pnlPct != null ? ` (${s.pnl >= 0 ? '+' : '−'}${Math.abs(s.pnlPct).toFixed(2)}%)` : ''}</span>
-    <span class="muted small">${period}</span>
-    <span class="muted small">value ${fmt.usdAuto(s.startTotal)} → ${fmt.usdAuto(s.endTotal)}</span>
-    <span class="muted small">net transfers <span class="${flowCls}">${s.netFlowUsd >= 0 ? '+' : '−'}${fmt.usdAuto(Math.abs(s.netFlowUsd))}</span></span>`;
+  $('hpl-summary').innerHTML = [
+    stat('Portfolio value (end)', fmt.usdAuto(s.endTotal), period),
+    stat('P&L', `${s.pnl >= 0 ? '+' : '−'}${fmt.usdAuto(Math.abs(s.pnl))}`,
+      s.pnlPct != null ? `${s.pnl >= 0 ? '+' : '−'}${Math.abs(s.pnlPct).toFixed(2)}% after transfers` : '', cls),
+    stat('Net transfers', `${s.netFlowUsd >= 0 ? '+' : '−'}${fmt.usdAuto(Math.abs(s.netFlowUsd))}`,
+      s.netFlowUsd >= 0 ? 'deposits exceed withdrawals' : s.netFlowUsd < 0 ? 'withdrawals exceed deposits' : '', flowCls),
+    stat('Value at start', fmt.usdAuto(s.startTotal), `${data.points.length - 1} on-chain events replayed`),
+  ].join('');
+
+  /* main chart: total value (step) */
   $('hpl-chart').classList.remove('hidden');
   chart('hpl-chart').setOption({
     grid: { left: 64, right: 14, top: 14, bottom: 24 },
@@ -624,15 +632,74 @@ function renderHPL(data) {
       },
     }],
   });
+
+  /* grouped charts: stacked per-token value over time + allocation donut */
+  const rows = data.tokens || [];
+  const withVal = rows.filter((r) => r.endVal || r.startVal).sort((a, b) => b.endVal - a.endVal);
+  const top = withVal.slice(0, 5);
+  const otherVal = withVal.slice(5).reduce((a, r) => a + r.endVal, 0);
+  const breakdownTokens = [...top, ...(otherVal ? [{ token: 'other', name: `Other (${withVal.length - 5})`, endVal: otherVal }] : [])];
+  // build stacked series: per-token values per point, missing → 0
+  const stackData = new Map(breakdownTokens.map((r) => [r.token, []]));
+  for (const p of data.points || []) {
+    let otherSum = 0;
+    for (const r of withVal.slice(5)) otherSum += p.perToken?.[r.token]?.value ?? 0;
+    for (const r of breakdownTokens) {
+      const v = r.token === 'other' ? (otherSum || null) : (p.perToken?.[r.token]?.value ?? null);
+      stackData.get(r.token).push([p.t, v]);
+    }
+  }
+  $('hpl-charts').classList.remove('hidden');
+  chart('hpl-breakdown').setOption({
+    grid: { left: 64, right: 14, top: 26, bottom: 24 },
+    legend: { top: 0, left: 0, icon: 'roundRect', itemWidth: 10, itemHeight: 10, textStyle: { color: C.text, fontSize: 10.5, fontFamily: 'JetBrains Mono, Menlo, monospace' }, itemGap: 12 },
+    xAxis: { type: 'time', ...axisCommon, splitLine: { show: false } },
+    yAxis: { type: 'value', ...axisCommon, axisLabel: { ...axisCommon.axisLabel, formatter: (v) => fmt.usdAuto(v) } },
+    tooltip: { ...tooltipCommon, trigger: 'axis', valueFormatter: (v) => (v == null ? '—' : fmt.usd(v)) },
+    series: breakdownTokens.map((r, i) => ({
+      name: r.name || r.code || fmt.short(r.token, 6, 4),
+      type: 'line', stack: 'total', step: 'end', symbol: 'none',
+      data: stackData.get(r.token),
+      lineStyle: { width: 1 }, itemStyle: { color: ACCENT[i % ACCENT.length] },
+      areaStyle: { opacity: 0.75, color: ACCENT[i % ACCENT.length] },
+    })),
+  });
+
+  /* donut: allocation at end of range */
+  const donutData = breakdownTokens.map((r, i) => ({
+    name: r.name || r.code || fmt.short(r.token, 8, 4),
+    value: +(r.endVal || 0).toFixed(2),
+    itemStyle: { color: ACCENT[i % ACCENT.length] },
+  })).filter((d) => d.value > 0);
+  chart('hpl-donut').setOption({
+    tooltip: { ...tooltipCommon, formatter: (p) => `${p.name}<br/>${fmt.usdAuto(p.value)} · ${p.percent}%` },
+    series: [{
+      type: 'pie', radius: ['52%', '78%'], center: ['50%', '52%'],
+      data: donutData.length ? donutData : [{ name: 'No priced assets', value: 1, itemStyle: { color: '#3b4261' } }],
+      label: { color: C.text, fontSize: 10.5, fontFamily: 'JetBrains Mono, Menlo, monospace', formatter: '{b}\n{d}%' },
+      labelLine: { lineStyle: { color: C.grid } },
+      itemStyle: { borderColor: '#24283b', borderWidth: 2 },
+    }],
+  });
+
+  /* grouped table: tokens active in the period vs static holdings */
   const KIND = { historical: 'historical price', current: 'current price', unpriced: 'no price', unknown: 'no price' };
-  $('hpl-table-wrap').classList.remove('hidden');
-  $('hpl-body').innerHTML = (data.tokens || []).map((t) => `<tr>
+  const rowHtml = (t) => `<tr>
       <td><div class="asset-cell">${assetIcon(t)}<div><div class="mini-name">${t.name || 'Unknown token'}</div><div class="muted small mono">${fmt.short(t.token, 10, 5)}</div></div></div></td>
       <td><span class="muted small">${KIND[t.priceKind] || t.priceKind}</span></td>
       <td class="right small">${fmt.compact(t.startBal, Math.abs(t.startBal) < 1 ? 6 : 2)} → <span class="strong">${fmt.compact(t.endBal, Math.abs(t.endBal) < 1 ? 6 : 2)}</span></td>
       <td class="right small">${t.startVal || t.endVal ? `${fmt.usdAuto(t.startVal)} → <span class="strong">${fmt.usdAuto(t.endVal)}</span>` : '<span class="muted">—</span>'}</td>
       <td class="right small ${t.netFlowUsd > 0 ? 'green' : t.netFlowUsd < 0 ? 'red' : 'muted'}">${t.netFlowUsd ? (t.netFlowUsd > 0 ? '+' : '−') + fmt.usdAuto(Math.abs(t.netFlowUsd)) : '—'}</td>
-    </tr>`).join('') || '<tr><td colspan="5" class="muted empty">No token movements found in this range</td></tr>';
+    </tr>`;
+  const active = rows.filter((t) => t.netFlowUsd || (t.startBal && t.startBal !== t.endBal));
+  const holdings = rows.filter((t) => !active.includes(t));
+  const groupHead = (title, hint) => `<tr class="hpl-group"><td colspan="5">${title} <span class="muted small">${hint}</span></td></tr>`;
+  $('hpl-table-wrap').classList.remove('hidden');
+  $('hpl-body').innerHTML =
+    (active.length ? groupHead('Active in period', 'balance changed or tokens moved') + active.map(rowHtml).join('') : '') +
+    (holdings.length ? groupHead('Static holdings', 'unchanged across the range') + holdings.map(rowHtml).join('') : '') ||
+    '<tr><td colspan="5" class="muted empty">No token movements found in this range</td></tr>';
+
   const notes = [];
   if (data.clamped) notes.push('CoinGecko free tier only provides 364 days of price history — the range was clamped');
   if (data.truncated) notes.push(`some accounts have more chain history than was scanned — send/receive events before ${fmt.date(data.chainStart)} may be missing`);
@@ -875,3 +942,8 @@ setInterval(pollMarket, 60_000);
 setInterval(() => { pollMarket().then(renderPriceChart); }, 65_000);
 setInterval(refreshPortfolio, 30_000);
 pollMarket().then(renderPriceChart);
+
+/* PWA service worker (offline shell + last-good API data) */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => { /* http or unsupported */ }));
+}
