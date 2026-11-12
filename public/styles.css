@@ -408,3 +408,12 @@ footer { border-top: 1px solid var(--border-soft); padding: 18px 28px; font-size
 .sav-row:last-child { border-bottom: none; }
 .sav-name { flex: 1; min-width: 0; }
 .sav-row .right { text-align: right; }
+
+/* ============ accounts you've sent to ============ */
+.sentto-list { display: flex; flex-direction: column; gap: 6px; }
+.sentto-item {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--bg-soft); border: 1px solid var(--border-soft);
+  border-radius: 8px; padding: 8px 12px;
+}
+.sentto-item .mono { flex: 1; min-width: 200px; }

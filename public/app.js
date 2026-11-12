@@ -432,6 +432,36 @@ function renderAccounts() {
     emptyDet.classList.add('hidden');
   }
 
+  // Accounts you've sent to (no ACL link) — one-click add to watch list
+  const sentTo = state.storage?.sentTo || [];
+  const sentSec = $('sentto-section');
+  if (sentTo.length) {
+    sentSec.classList.remove('hidden');
+    $('sentto-list').innerHTML = sentTo.map((d) => {
+      const watched = state.accounts.some((a) => a.address === d.address);
+      return `<div class="sentto-item">
+        <span class="mono small">${fmt.short(d.address, 16, 8)}</span>
+        <span class="muted small">${d.count} send${d.count !== 1 ? 's' : ''} · ${d.tokens.length} token${d.tokens.length !== 1 ? 's' : ''}${d.lastDate ? ' · last ' + fmt.ago(d.lastDate) : ''}</span>
+        ${watched
+          ? '<span class="tag tag-owner">WATCHING</span>'
+          : `<button class="mini-btn" data-watch="${d.address}">+ Watch</button>`}
+      </div>`;
+    }).join('');
+    document.querySelectorAll('[data-watch]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const addr = b.dataset.watch;
+        if (!state.accounts.some((a) => a.address === addr)) {
+          state.accounts.push({ address: addr, label: 'Sent-to account', source: 'sentto' });
+          persist();
+          toast('Added to watch list');
+          refreshPortfolio();
+        }
+      })
+    );
+  } else {
+    sentSec.classList.add('hidden');
+  }
+
   document.querySelectorAll('[data-remove]').forEach((b) =>
     b.addEventListener('click', () => {
       state.accounts = state.accounts.filter((a) => a.address !== b.dataset.remove);

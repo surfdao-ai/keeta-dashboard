@@ -59,6 +59,7 @@ export const cached = async (key, ttlMs, fn) => {
 /* Known mainnet tokens (docs.keeta.com — fiat anchors) */
 export const USDC_TOKEN = 'keeta_amnkge74xitii5dsobstldatv3irmyimujfjotftx7plaaaseam4bntb7wnna';
 export const EUR_TOKEN = 'keeta_anutgo4o3yp5tvc6wjt4vzsehjbn7t2wylpxmam4d4ojtdkjj2yca2qoinfcs';
+export const EURC_TOKEN = 'keeta_apblhar4ncp3ln62wrygsn73pt3houuvj7ic47aarnolpcu67oqn4xqcji3au';
 
 /* ---- ACL permission decoding (BaseFlag offsets) ---- */
 const BASE_FLAGS = {
@@ -436,14 +437,14 @@ export async function priceFor(tokenAddr) {
     return m?.price ?? (await ksPrice().catch(() => null))?.priceUsd ?? null;
   }
   if (tokenAddr === USDC_TOKEN) return 1.0;
-  if (tokenAddr === EUR_TOKEN) {
+  if (tokenAddr === EUR_TOKEN || tokenAddr === EURC_TOKEN) {
     const rates = await fiatUsdRates().catch(() => null);
     return rates?.EUR ?? null;
   }
   const reg = await tokenRegistry().catch(() => null);
   const entry = reg?.get(tokenAddr);
   if (entry) {
-    if (entry.code?.toUpperCase() === 'CBTC' || entry.code === 'BTC' || entry.code === 'BTCB') {
+    if (['CBBTC', 'BTC', 'BTCB'].includes((entry.code ?? '').toUpperCase())) {
       return await cgSimple('bitcoin').catch(() => null);
     }
     if (entry.currency && entry.kind !== 'asset') {
@@ -564,7 +565,10 @@ export async function ownedStorageAccounts(addresses) {
   const { client } = state();
   const results = await Promise.all(uniq.map(async (address) => {
     try {
-      const acls = await withTimeout(client.listACLsByPrincipal(KeetaNet.lib.Account.fromPublicKeyString(address)).then(S), 15000, 'acls');
+      const [acls, chain] = await Promise.all([
+        withTimeout(client.listACLsByPrincipal(KeetaNet.lib.Account.fromPublicKeyString(address)).then(S), 15000, 'acls'),
+        withTimeout(client.getChain(KeetaNet.lib.Account.fromPublicKeyString(address), { depth: 100 }).then(S), 15000, 'chain').catch(() => []),
+      ]);
       const perEntity = new Map();
       for (const acl of acls || []) {
         if (!acl?.entity) continue;
@@ -576,9 +580,26 @@ export async function ownedStorageAccounts(addresses) {
         .filter(([e]) => { try { return KeetaNet.lib.Account.fromPublicKeyString(e).keyType === 4; } catch { return false; } })
         .map(([e, perms]) => ({ address: e, permissions: perms }));
       const others = [...perEntity.keys()].filter((e) => !storage.some((s) => s.address === e));
-      return { address, storage, others };
+
+      // accounts you've SENT to but have no ACL relationship with — these are
+      // invisible to ACL discovery (e.g. deposit/parking accounts created by
+      // wallet apps). Surfaces them so the UI can offer them as watchables.
+      const sentTo = new Map(); // dest -> { count, lastDate, tokens:Set }
+      for (const blk of chain || []) {
+        const bd = blk?.date ? new Date(blk.date).getTime() : 0;
+        for (const o of blk?.operations || []) {
+          const type = KeetaNet.lib.Block.OperationType[o.type] ?? String(o.type);
+          if (type !== 'SEND' || !o.to || userSet.has(o.to) || perEntity.has(o.to)) continue;
+          const cur = sentTo.get(o.to) || { count: 0, lastDate: 0, tokens: new Set() };
+          cur.count++;
+          cur.lastDate = Math.max(cur.lastDate, bd);
+          cur.tokens.add(o.token || 'KTA');
+          sentTo.set(o.to, cur);
+        }
+      }
+      return { address, storage, others, sentTo: [...sentTo.entries()] };
     } catch {
-      return { address, storage: [], others: [] };
+      return { address, storage: [], others: [], sentTo: [] };
     }
   }));
 
@@ -623,9 +644,27 @@ export async function ownedStorageAccounts(addresses) {
     };
   }));
 
+  // rank send-destinations the user has no ACL with, exclude known issuer
+  // vaults and token accounts; these are candidate "parking/deposit" accounts
+  const sentAgg = new Map();
+  for (const r of results) for (const [dest, info] of r.sentTo || []) {
+    const cur = sentAgg.get(dest) || { address: dest, count: 0, lastDate: 0, tokens: new Set(), sentFrom: [] };
+    cur.count += info.count;
+    cur.lastDate = Math.max(cur.lastDate, info.lastDate);
+    for (const t of info.tokens) cur.tokens.add(t);
+    if (!cur.sentFrom.includes(r.address)) cur.sentFrom.push(r.address);
+    sentAgg.set(dest, cur);
+  }
+  const sentTo = [...sentAgg.values()]
+    .filter((d) => !storageMap.has(d.address) && !d.address.startsWith('keeta_anqdilp')) // skip ACL vaults + KTA token
+    .sort((a, b) => b.count - a.count || b.lastDate - a.lastDate)
+    .slice(0, 12)
+    .map(({ tokens, ...rest }) => ({ ...rest, tokens: [...tokens] }));
+
   return {
     byOwner: results.map((r) => ({ address: r.address, storage: r.storage.map((s) => s.address), others: r.others })),
     storageAccounts: enriched,
+    sentTo,
   };
 }
 
