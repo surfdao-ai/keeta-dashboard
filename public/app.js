@@ -1238,6 +1238,10 @@ $('theme-toggle').addEventListener('click', () => {
 });
 
 /* ---------- boot ---------- */
+const BUILD = 'dashkee-v5';
+const stamp = $('build-stamp');
+if (stamp) stamp.textContent = 'build ' + BUILD;
+console.log('[DashKee] build', BUILD);
 state.accounts = saved(); // restore watched addresses from localStorage
 pollMarket();
 refreshPortfolio();
