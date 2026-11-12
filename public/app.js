@@ -293,8 +293,9 @@ function renderBanking() {
     const id = acc.identity;
     const verified = id?.verified;
     const cached = bankCache[acc.address];
+    const iHoldKey = (state.accounts.find((a) => a.address === acc.address) || {}).source === 'seed';
     let body;
-    if (verified) {
+    if (verified && iHoldKey) {
       body = cached
         ? cached.error
           ? `<div class="bank-err">⚠ ${cached.error}</div>`
@@ -305,6 +306,20 @@ function renderBanking() {
              <button class="primary-btn bank-fetch-btn" data-bankfetch="${acc.address}">Get bank details</button>
            </div>
            <div class="bank-status muted small hidden" id="bankstatus-${acc.address}"></div>`;
+    } else if (verified) {
+      // watched account with KYC whose seed we didn't derive in-session
+      body = cached
+        ? cached.error
+          ? `<div class="bank-err">⚠ ${cached.error}</div>`
+          : cached.accounts.map((row) => bankRowHtml(row, cached.provider)).join('')
+        : `<div class="bank-locked muted small">🏦 This account's bank details are <b>private to its owner</b> — the fiat anchor only releases account &amp; routing numbers to requests signed with this account's own key, and this address was added by watch (no key held).</div>
+           <details class="bank-owner-toggle"><summary class="muted small">I hold this account's seed</summary>
+             <div class="bank-fetch-row" style="margin-top:8px">
+               <input type="password" id="bankseed-${acc.address}" class="bank-seed" placeholder="64-char hex seed (this tab only)" autocomplete="off" />
+               <button class="primary-btn bank-fetch-btn" data-bankfetch="${acc.address}">Get bank details</button>
+             </div>
+             <div class="bank-status muted small hidden" id="bankstatus-${acc.address}"></div>
+           </details>`;
     } else {
       body = `<div class="bank-locked muted small">🔒 <b>Identity verification required.</b> Complete KYC once (e.g. Footprint or Keeta Personal in the Keeta app) and this account gets a checking account — a real <b>account number &amp; routing number</b> for USD deposits, minted straight to your Keeta address as USDC. DashKee shows the KYC badge automatically once the certificate is on-chain.</div>`;
     }
